@@ -781,11 +781,14 @@ class Event extends MatrixEvent {
     final canDownloadFileFromServer = uint8list == null && !fromLocalStoreOnly;
     if (canDownloadFileFromServer) {
       final httpClient = room.client.httpClient;
-      downloadCallback ??= (Uri url) async => (await httpClient.get(
-            url,
-            headers: {'authorization': 'Bearer ${room.client.accessToken}'},
-          ))
-              .bodyBytes;
+      downloadCallback ??= (Uri url) async {
+        final res = await httpClient.get(
+          url,
+          headers: {'authorization': 'Bearer ${room.client.accessToken}'},
+        );
+        if (res.statusCode > 399) throw ('Bad status code');
+        return res.bodyBytes;
+      };
       uint8list =
           await downloadCallback(await mxcUrl.getDownloadUri(room.client));
       storeable = storeable && uint8list.lengthInBytes < database.maxFileSize;
