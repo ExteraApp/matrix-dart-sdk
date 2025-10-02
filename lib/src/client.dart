@@ -1611,14 +1611,23 @@ class Client extends MatrixApi {
       // We send an empty String to remove the avatar. Sending Null **should**
       // work but it doesn't with Synapse. See:
       // https://gitlab.com/famedly/company/frontend/famedlysdk/-/issues/254
-      return setAvatarUrl(userID!, Uri.parse(''));
+      await setProfileField(
+        userID!,
+        'avatar_url',
+        {'avatar_url': Uri.parse('')},
+      );
+      return;
     }
     final uploadResp = await uploadContent(
       file.bytes,
       filename: file.name,
       contentType: file.mimeType,
     );
-    await setAvatarUrl(userID!, uploadResp);
+    await setProfileField(
+      userID!,
+      'avatar_url',
+      {'avatar_url': uploadResp.toString()},
+    );
     return;
   }
 
@@ -2632,13 +2641,15 @@ class Client extends MatrixApi {
       final id = entry.key;
       final syncRoomUpdate = entry.value;
 
+      final room = await _updateRoomsByRoomUpdate(id, syncRoomUpdate);
+
       // Is the timeline limited? Then all previous messages should be
       // removed from the database!
       if (syncRoomUpdate is JoinedRoomUpdate &&
           syncRoomUpdate.timeline?.limited == true) {
         await database.deleteTimelineForRoom(id);
+        room.lastEvent = null;
       }
-      final room = await _updateRoomsByRoomUpdate(id, syncRoomUpdate);
 
       final timelineUpdateType = direction != null
           ? (direction == Direction.b
@@ -2738,6 +2749,24 @@ class Client extends MatrixApi {
         Logs().d('Skip store LeftRoomUpdate for unknown room', id);
         continue;
       }
+
+      if (syncRoomUpdate is JoinedRoomUpdate &&
+          (room.lastEvent?.type == EventTypes.refreshingLastEvent ||
+              (syncRoomUpdate.timeline?.limited == true &&
+                  room.lastEvent == null))) {
+        room.lastEvent = Event(
+          originServerTs:
+              syncRoomUpdate.timeline?.events?.firstOrNull?.originServerTs ??
+                  DateTime.now(),
+          type: EventTypes.refreshingLastEvent,
+          content: {'body': 'Refreshing last event...'},
+          room: room,
+          eventId: generateUniqueTransactionId(),
+          senderId: userID!,
+        );
+        runInRoot(room.refreshLastEvent);
+      }
+
       await database.storeRoomUpdate(id, syncRoomUpdate, room.lastEvent, this);
     }
   }
@@ -3034,13 +3063,6 @@ class Client extends MatrixApi {
           room.setState(event);
         }
         if (type != EventUpdateType.timeline) break;
-
-        // If last event is null or not a valid room preview event anyway,
-        // just use this:
-        if (room.lastEvent == null) {
-          room.lastEvent = event;
-          break;
-        }
 
         // Is this event redacting the last event?
         if (event.type == EventTypes.Redaction &&
@@ -3758,10 +3780,30 @@ class Client extends MatrixApi {
 
   /// Ignore another user. This will clear the local cached messages to
   /// hide all previous messages from this user.
-  Future<void> ignoreUser(String userId) async {
+  Future<void> ignoreUser(
+    String userId, {
+    /// Whether to also decline all invites and leave DM rooms with this user.
+    bool leaveRooms = true,
+  }) async {
     if (!userId.isValidMatrixId) {
       throw Exception('$userId is not a valid mxid!');
     }
+
+    if (leaveRooms) {
+      for (final room in rooms) {
+        final isInviteFromUser = room.membership == Membership.invite &&
+            room.getState(EventTypes.RoomMember, userID!)?.senderId == userId;
+
+        if (room.directChatMatrixID == userId || isInviteFromUser) {
+          try {
+            await room.leave();
+          } catch (e, s) {
+            Logs().w('Unable to leave room with blocked user $userId', e, s);
+          }
+        }
+      }
+    }
+
     await setAccountData(userID!, 'm.ignored_user_list', {
       'ignored_users': Map.fromEntries(
         (ignoredUsers..add(userId)).map((key) => MapEntry(key, {})),
