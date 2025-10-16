@@ -711,6 +711,12 @@ class Room {
     String? threadLastEventId,
     StringBuffer? commandStdout,
     bool addMentions = true,
+
+    /// Displays an event in the timeline with the transaction ID as the event
+    /// ID and a status of SENDING, SENT or ERROR until it gets replaced by
+    /// the sync event. Using this can display a different sort order of events
+    /// as the sync event does replace but not relocate the pending event.
+    bool displayPendingEvent = true,
   }) {
     if (parseCommands) {
       return client.parseAndRunCommand(
@@ -784,6 +790,7 @@ class Room {
       editEventId: editEventId,
       threadRootEventId: threadRootEventId,
       threadLastEventId: threadLastEventId,
+      displayPendingEvent: displayPendingEvent,
     );
   }
 
@@ -838,6 +845,12 @@ class Room {
     Map<String, dynamic>? extraContent,
     String? threadRootEventId,
     String? threadLastEventId,
+
+    /// Displays an event in the timeline with the transaction ID as the event
+    /// ID and a status of SENDING, SENT or ERROR until it gets replaced by
+    /// the sync event. Using this can display a different sort order of events
+    /// as the sync event does replace but not relocate the pending event.
+    bool displayPendingEvent = true,
   }) async {
     txid ??= client.generateUniqueTransactionId();
     sendingFilePlaceholders[txid] = file;
@@ -1035,6 +1048,7 @@ class Room {
       editEventId: editEventId,
       threadRootEventId: threadRootEventId,
       threadLastEventId: threadLastEventId,
+      displayPendingEvent: displayPendingEvent,
     );
     sendingFilePlaceholders.remove(txid);
     sendingFileThumbnails.remove(txid);
@@ -1119,6 +1133,12 @@ class Room {
     String? editEventId,
     String? threadRootEventId,
     String? threadLastEventId,
+
+    /// Displays an event in the timeline with the transaction ID as the event
+    /// ID and a status of SENDING, SENT or ERROR until it gets replaced by
+    /// the sync event. Using this can display a different sort order of events
+    /// as the sync event does replace but not relocate the pending event.
+    bool displayPendingEvent = true,
   }) async {
     // Create new transaction id
     final String messageID;
@@ -1223,7 +1243,7 @@ class Room {
     // we need to add the transaction ID to the set of events that are currently queued to be sent
     // even before the fake sync is called, so that the event constructor can check if the event is in the sending state
     sendingQueueEventsByTxId.add(messageID);
-    await _handleFakeSync(syncUpdate);
+    if (displayPendingEvent) await _handleFakeSync(syncUpdate);
     final completer = Completer();
     sendingQueue.add(completer);
     while (sendingQueue.first != completer) {
@@ -1257,7 +1277,7 @@ class Room {
           Logs().w('Problem while sending message', e, s);
           syncUpdate.rooms!.join!.values.first.timeline!.events!.first
               .unsigned![messageSendingStatusKey] = EventStatus.error.intValue;
-          await _handleFakeSync(syncUpdate);
+          if (displayPendingEvent) await _handleFakeSync(syncUpdate);
           completer.complete();
           sendingQueue.remove(completer);
           sendingQueueEventsByTxId.remove(messageID);
@@ -1276,7 +1296,7 @@ class Room {
     syncUpdate.rooms!.join!.values.first.timeline!.events!.first
         .unsigned![messageSendingStatusKey] = EventStatus.sent.intValue;
     syncUpdate.rooms!.join!.values.first.timeline!.events!.first.eventId = res;
-    await _handleFakeSync(syncUpdate);
+    if (displayPendingEvent) await _handleFakeSync(syncUpdate);
     completer.complete();
     sendingQueue.remove(completer);
     sendingQueueEventsByTxId.remove(messageID);

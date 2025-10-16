@@ -91,9 +91,7 @@ class CallMembership {
       'scope': scope,
       'foci_active': [backend.toJson()],
       'device_id': deviceId,
-      'event_id': eventId,
       'expires_ts': expiresTs,
-      'expires': 7200000, // element compatibiltiy remove asap
       'membershipID': membershipId, // sessionId
       if (feeds != null) 'feeds': feeds,
     };
@@ -166,4 +164,9 @@ class CallMembership {
       DateTime.now()
           .subtract(voip.timeouts!.expireTsBumpDuration)
           .millisecondsSinceEpoch;
+
+  @override
+  String toString() {
+    return 'CallMembership(userId: $userId, callId: $callId, application: $application, scope: $scope, backend: $backend, deviceId: $deviceId, eventId: $eventId, expiresTs: $expiresTs, membershipId: $membershipId, feeds: $feeds, voip: $voip, roomId: $roomId)';
+  }
 }
