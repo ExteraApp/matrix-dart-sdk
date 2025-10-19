@@ -16,11 +16,11 @@ import 'package:matrix/src/utils/space_child.dart';
 
 class Thread {
   final Room room;
-  final String threadRootId;
+  final MatrixEvent rootEvent;
 
   Thread({
     required Room this.room,
-    required String this.threadRootId
+    required MatrixEvent this.rootEvent
   }) {
 
   }
