@@ -26,6 +26,7 @@ import 'package:html_unescape/html_unescape.dart';
 
 import 'package:matrix/matrix.dart';
 import 'package:matrix/src/models/timeline_chunk.dart';
+import 'package:matrix/src/room_timeline.dart';
 import 'package:matrix/src/utils/cached_stream_controller.dart';
 import 'package:matrix/src/utils/file_send_request_credentials.dart';
 import 'package:matrix/src/utils/markdown.dart';
@@ -1690,7 +1691,7 @@ class Room {
       }
     }
 
-    final timeline = Timeline(
+    final timeline = RoomTimeline(
       room: this,
       chunk: chunk,
       onChange: onChange,
