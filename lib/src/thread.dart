@@ -125,4 +125,47 @@ class Thread {
       threadRootEventId: rootEvent.eventId,
     );
   }
+
+  Future<String?> sendLocation(String body, String geoUri, {String? txid}) {
+    final event = <String, dynamic>{
+      'msgtype': 'm.location',
+      'body': body,
+      'geo_uri': geoUri,
+    };
+    return room.sendEvent(
+      event,
+      txid: txid,
+      threadLastEventId: lastEvent?.eventId,
+      threadRootEventId: rootEvent.eventId,
+    );
+  }
+
+  Future<String?> sendFileEvent(
+    MatrixFile file, {
+    String? txid,
+    Event? inReplyTo,
+    String? editEventId,
+    int? shrinkImageMaxDimension,
+    MatrixImageFile? thumbnail,
+    Map<String, dynamic>? extraContent,
+
+    /// Displays an event in the timeline with the transaction ID as the event
+    /// ID and a status of SENDING, SENT or ERROR until it gets replaced by
+    /// the sync event. Using this can display a different sort order of events
+    /// as the sync event does replace but not relocate the pending event.
+    bool displayPendingEvent = true,
+  }) async {
+    return await room.sendFileEvent(
+      file,
+      txid: txid,
+      inReplyTo: inReplyTo,
+      editEventId: editEventId,
+      shrinkImageMaxDimension: shrinkImageMaxDimension,
+      thumbnail: thumbnail,
+      extraContent: extraContent,
+      displayPendingEvent: displayPendingEvent,
+      threadLastEventId: lastEvent?.eventId,
+      threadRootEventId: rootEvent.eventId,
+    );
+  }
 }
