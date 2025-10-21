@@ -77,4 +77,52 @@ class Thread {
 
     return event;
   }
+
+  /// When was the last event received.
+  DateTime get latestEventReceivedTime {
+    final lastEventTime = lastEvent?.originServerTs;
+    if (lastEventTime != null) return lastEventTime;
+
+    if (room.membership == Membership.invite) return DateTime.now();
+
+    return rootEvent.originServerTs;
+  }
+
+  bool get hasNewMessages {
+    // TODO: Implement this
+    return false;
+  }
+
+  Future<String?> sendTextEvent(
+    String message, {
+    String? txid,
+    Event? inReplyTo,
+    String? editEventId,
+    bool parseMarkdown = true,
+    bool parseCommands = true,
+    String msgtype = MessageTypes.Text,
+    StringBuffer? commandStdout,
+    bool addMentions = true,
+
+    /// Displays an event in the timeline with the transaction ID as the event
+    /// ID and a status of SENDING, SENT or ERROR until it gets replaced by
+    /// the sync event. Using this can display a different sort order of events
+    /// as the sync event does replace but not relocate the pending event.
+    bool displayPendingEvent = true,
+  }) {
+    return room.sendTextEvent(
+      message,
+      txid: txid,
+      inReplyTo: inReplyTo,
+      editEventId: editEventId,
+      parseCommands: parseCommands,
+      parseMarkdown: parseMarkdown,
+      msgtype: msgtype,
+      commandStdout: commandStdout,
+      addMentions: addMentions,
+      displayPendingEvent: displayPendingEvent,
+      threadLastEventId: lastEvent?.eventId,
+      threadRootEventId: rootEvent.eventId,
+    );
+  }
 }
