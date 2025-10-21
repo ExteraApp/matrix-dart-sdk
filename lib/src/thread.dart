@@ -21,7 +21,7 @@ class Thread {
     final thread = Thread(
         room: room,
         rootEvent: MatrixEvent.fromJson(json),
-        lastEvent: lastEvent
+        lastEvent: lastEvent,
     );
     return thread;
   }
