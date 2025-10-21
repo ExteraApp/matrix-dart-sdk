@@ -25,7 +25,6 @@ import 'package:matrix/src/models/timeline_chunk.dart';
 
 /// Represents the main timeline of a room.
 class RoomTimeline extends Timeline {
-  @override
   final Room room;
   @override
   List<Event> get events => chunk.events;
@@ -429,17 +428,6 @@ class RoomTimeline extends Timeline {
     return i;
   }
 
-  /// Remove event from set based on event or transaction ID
-  void _removeEventFromSet(Set<Event> eventSet, Event event) {
-    eventSet.removeWhere(
-      (e) =>
-          e.matchesEventOrTransactionId(event.eventId) ||
-          event.unsigned != null &&
-              e.matchesEventOrTransactionId(event.transactionId),
-    );
-  }
-
-  @override
   void _handleEventUpdate(
     Event event,
     EventUpdateType type, {
