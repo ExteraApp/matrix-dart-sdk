@@ -2,8 +2,8 @@ import 'package:matrix/matrix.dart';
 
 class Thread {
   final Room room;
-  final MatrixEvent rootEvent;
-  final MatrixEvent? lastEvent;
+  final Event rootEvent;
+  final Event? lastEvent;
 
   Thread({
     required this.room,
@@ -14,13 +14,13 @@ class Thread {
   factory Thread.fromJson(Map<String, dynamic> json, Client client) {
     final room = client.getRoomById(json['room_id']);
     if (room == null) throw Error();
-    MatrixEvent? lastEvent;
+    Event? lastEvent;
     if (json['unsigned']?['m.relations']?['m.thread']?['latest_event'] != null) {
-      lastEvent = MatrixEvent.fromJson(json['unsigned']?['m.relations']?['m.thread']?['latest_event']);
+      lastEvent = MatrixEvent.fromJson(json['unsigned']?['m.relations']?['m.thread']?['latest_event']) as Event;
     }
     final thread = Thread(
         room: room,
-        rootEvent: MatrixEvent.fromJson(json),
+        rootEvent: MatrixEvent.fromJson(json) as Event,
         lastEvent: lastEvent,
     );
     return thread;
