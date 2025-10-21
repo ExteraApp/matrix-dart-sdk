@@ -21,7 +21,8 @@ class Thread {
         null) {
       lastEvent = Event.fromMatrixEvent(
         MatrixEvent.fromJson(
-            json['unsigned']?['m.relations']?['m.thread']?['latest_event']),
+          json['unsigned']?['m.relations']?['m.thread']?['latest_event'],
+        ),
         room,
       );
     }
