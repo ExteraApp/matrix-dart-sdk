@@ -4,12 +4,14 @@ class Thread {
   final Room room;
   final Event rootEvent;
   Event? lastEvent;
+  String? prev_batch;
   final Client client;
 
   Thread({
     required this.room,
     required this.rootEvent,
     required this.client,
+    this.prev_batch,
     this.lastEvent,
   });
 

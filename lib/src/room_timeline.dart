@@ -598,13 +598,44 @@ class RoomTimeline extends Timeline {
     }
     return;
   }
-}
 
-extension on List<Event> {
-  int get firstIndexWhereNotError {
-    if (isEmpty) return 0;
-    final index = indexWhere((event) => !event.status.isError);
-    if (index == -1) return length;
-    return index;
+  /// Add an event to the aggregation tree
+  void addAggregatedEvent(Event event) {
+    final relationshipType = event.relationshipType;
+    final relationshipEventId = event.relationshipEventId;
+    if (relationshipType == null || relationshipEventId == null) {
+      return;
+    }
+    final e = (aggregatedEvents[relationshipEventId] ??=
+        <String, Set<Event>>{})[relationshipType] ??= <Event>{};
+    _removeEventFromSet(e, event);
+    e.add(event);
+    if (onChange != null) {
+      final index = _findEvent(event_id: relationshipEventId);
+      onChange?.call(index);
+    }
+  }
+
+  /// Remove an event from aggregation
+  void removeAggregatedEvent(Event event) {
+    aggregatedEvents.remove(event.eventId);
+    if (event.transactionId != null) {
+      aggregatedEvents.remove(event.transactionId);
+    }
+    for (final types in aggregatedEvents.values) {
+      for (final e in types.values) {
+        _removeEventFromSet(e, event);
+      }
+    }
+  }
+
+  /// Remove event from set based on event or transaction ID
+  void _removeEventFromSet(Set<Event> eventSet, Event event) {
+    eventSet.removeWhere(
+      (e) =>
+          e.matchesEventOrTransactionId(event.eventId) ||
+          event.unsigned != null &&
+              e.matchesEventOrTransactionId(event.transactionId),
+    );
   }
 }
