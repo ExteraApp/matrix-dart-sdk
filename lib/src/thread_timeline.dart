@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:matrix/matrix.dart';
 import 'package:matrix/src/models/timeline_chunk.dart';
@@ -21,6 +22,17 @@ class ThreadTimeline extends Timeline {
   StreamSubscription<SyncUpdate>? roomSub;
   StreamSubscription<String>? sessionIdReceivedSub;
   StreamSubscription<String>? cancelSendEventSub;
+
+  bool isRequestingHistory = false;
+  bool isFragmentedTimeline = false;
+
+  final Map<String, Event> _eventCache = {};
+  
+  bool _fetchedAllDatabaseEvents = false;
+  
+  bool allowNewEvent = true;
+  
+  bool _collectHistoryUpdates = false;
 
   ThreadTimeline({
     required this.thread,
@@ -59,20 +71,38 @@ class ThreadTimeline extends Timeline {
         onNewEvent?.call();
       }
 
-      if (type == EventUpdateType.history &&
-          events.indexWhere((e) => e.eventId == event.eventId) != -1) {
-        return;
-      }
-      var index = events.length;
-      if (type == EventUpdateType.history) {
-        events.add(event);
+      final status = event.status;
+      final i = _findEvent(
+        event_id: event.eventId,
+        unsigned_txid: event.transactionId,
+      );
+      if (i < events.length) {
+        // if the old status is larger than the new one, we also want to preserve the old status
+        final oldStatus = events[i].status;
+        events[i] = event;
+        // do we preserve the status? we should allow 0 -> -1 updates and status increases
+        if ((latestEventStatus(status, oldStatus) == oldStatus) &&
+            !(status.isError && oldStatus.isSending)) {
+          events[i].status = oldStatus;
+        }
+        addAggregatedEvent(events[i]);
+        onChange?.call(i);
       } else {
-        index = events.firstIndexWhereNotError;
-        events.insert(index, event);
-      }
-      onInsert?.call(index);
+        if (type == EventUpdateType.history &&
+            events.indexWhere((e) => e.eventId == event.eventId) != -1) {
+          return;
+        }
+        var index = events.length;
+        if (type == EventUpdateType.history) {
+          events.add(event);
+        } else {
+          index = events.firstIndexWhereNotError;
+          events.insert(index, event);
+        }
+        onInsert?.call(index);
 
-      addAggregatedEvent(event);
+        addAggregatedEvent(event);
+      }
 
       // Handle redaction events
       if (event.type == EventTypes.Redaction) {
@@ -100,6 +130,184 @@ class ThreadTimeline extends Timeline {
       }
     } catch (e, s) {
       Logs().w('Handle event update failed', e, s);
+    }
+  }
+
+  /// Request more previous events from the server.
+  Future<int> getThreadEvents({
+    int historyCount = Room.defaultHistoryCount,
+    direction = Direction.b,
+    StateFilter? filter,
+  }) async {
+    // Ensure stateFilter is not null and set lazyLoadMembers to true if not already set
+    filter ??= StateFilter(lazyLoadMembers: true);
+    filter.lazyLoadMembers ??= true;
+
+    final resp = await thread.client.getRelatingEventsWithRelType(
+      thread.room.id,
+      thread.rootEvent.eventId,
+      RelationshipTypes.thread,
+      dir: direction,
+      from: direction == Direction.b ? chunk.prevBatch : chunk.nextBatch,
+      limit: historyCount,
+    );
+
+    if (resp.nextBatch == null) {
+      Logs().w('We reached the end of the timeline');
+    }
+
+    final newNextBatch = direction == Direction.b ? resp.prevBatch : resp.nextBatch;
+    final newPrevBatch = direction == Direction.b ? resp.nextBatch : resp.prevBatch;
+
+    final type = direction == Direction.b
+        ? EventUpdateType.history
+        : EventUpdateType.timeline;
+
+    // I dont know what this piece of code does
+    // if ((resp.state?.length ?? 0) == 0 &&
+    //     resp.start != resp.end &&
+    //     newPrevBatch != null &&
+    //     newNextBatch != null) {
+    //   if (type == EventUpdateType.history) {
+    //     Logs().w(
+    //       '[nav] we can still request history prevBatch: $type $newPrevBatch',
+    //     );
+    //   } else {
+    //     Logs().w(
+    //       '[nav] we can still request timeline nextBatch: $type $newNextBatch',
+    //     );
+    //   }
+    // }
+
+    final newEvents =
+        resp.chunk.map((e) => Event.fromMatrixEvent(e, thread.room)).toList();
+
+    if (!allowNewEvent) {
+      if (resp.prevBatch == resp.nextBatch ||
+          (resp.nextBatch == null && direction == Direction.f)) {
+        allowNewEvent = true;
+      }
+
+      if (allowNewEvent) {
+        Logs().d('We now allow sync update into the timeline.');
+        newEvents.addAll(
+          await thread.client.database.getThreadEventList(thread, onlySending: true),
+        );
+      }
+    }
+
+    // Try to decrypt encrypted events but don't update the database.
+    if (thread.room.encrypted && thread.client.encryptionEnabled) {
+      for (var i = 0; i < newEvents.length; i++) {
+        if (newEvents[i].type == EventTypes.Encrypted) {
+          newEvents[i] = await thread.client.encryption!.decryptRoomEvent(
+            newEvents[i],
+          );
+        }
+      }
+    }
+
+    // update chunk anchors
+    if (type == EventUpdateType.history) {
+      chunk.prevBatch = newPrevBatch ?? '';
+
+      final offset = chunk.events.length;
+
+      chunk.events.addAll(newEvents);
+
+      for (var i = 0; i < newEvents.length; i++) {
+        onInsert?.call(i + offset);
+      }
+    } else {
+      chunk.nextBatch = newNextBatch ?? '';
+      chunk.events.insertAll(0, newEvents.reversed);
+
+      for (var i = 0; i < newEvents.length; i++) {
+        onInsert?.call(i);
+      }
+    }
+
+    if (onUpdate != null) {
+      onUpdate!();
+    }
+    return resp.chunk.length;
+  }
+
+  Future<void> _requestEvents({
+    int historyCount = Room.defaultHistoryCount,
+    required Direction direction,
+    StateFilter? filter,
+  }) async {
+    onUpdate?.call();
+
+    try {
+      // Look up for events in the database first. With fragmented view, we should delete the database cache
+      final eventsFromStore = isFragmentedTimeline
+          ? null
+          : await thread.client.database.getThreadEventList(
+              thread,
+              start: events.length,
+              limit: historyCount,
+            );
+
+      if (eventsFromStore != null && eventsFromStore.isNotEmpty) {
+        for (final e in eventsFromStore) {
+          addAggregatedEvent(e);
+        }
+        // Fetch all users from database we have got here.
+        for (final event in events) {
+          if (thread.room.getState(EventTypes.RoomMember, event.senderId) != null) {
+            continue;
+          }
+          final dbUser =
+              await thread.client.database.getUser(event.senderId, thread.room);
+          if (dbUser != null) thread.room.setState(dbUser);
+        }
+
+        if (direction == Direction.b) {
+          events.addAll(eventsFromStore);
+          final startIndex = events.length - eventsFromStore.length;
+          final endIndex = events.length;
+          for (var i = startIndex; i < endIndex; i++) {
+            onInsert?.call(i);
+          }
+        } else {
+          events.insertAll(0, eventsFromStore);
+          final startIndex = eventsFromStore.length;
+          final endIndex = 0;
+          for (var i = startIndex; i > endIndex; i--) {
+            onInsert?.call(i);
+          }
+        }
+      } else {
+        _fetchedAllDatabaseEvents = true;
+        Logs().i('No more events found in the store. Request from server...');
+
+        if (isFragmentedTimeline) {
+          await getThreadEvents(
+            historyCount: historyCount,
+            direction: direction,
+            filter: filter,
+          );
+        } else {
+          if (thread.prev_batch == null) {
+            Logs().i('No more events to request from server...');
+          } else {
+            await thread.requestHistory(
+              historyCount: historyCount,
+              direction: direction,
+              onHistoryReceived: () {
+                _collectHistoryUpdates = true;
+              },
+              filter: filter,
+            );
+          }
+        }
+      }
+    } finally {
+      _collectHistoryUpdates = false;
+      isRequestingHistory = false;
+      onUpdate?.call();
     }
   }
 
@@ -173,9 +381,15 @@ class ThreadTimeline extends Timeline {
   }
 
   @override
-  Future<Event?> getEventById(String id) {
-    // TODO: implement getEventById
-    throw UnimplementedError();
+  Future<Event?> getEventById(String id) async {
+    for (final event in events) {
+      if (event.eventId == id) return event;
+    }
+    if (_eventCache.containsKey(id)) return _eventCache[id];
+    final requestedEvent = await thread.room.getEventById(id);
+    if (requestedEvent == null) return null;
+    _eventCache[id] = requestedEvent;
+    return _eventCache[id];
   }
 
   @override
@@ -187,9 +401,15 @@ class ThreadTimeline extends Timeline {
 
   @override
   Future<void> requestHistory(
-      {int historyCount = Room.defaultHistoryCount, StateFilter? filter}) {
-    // TODO: implement requestHistory
-    throw UnimplementedError();
+      {int historyCount = Room.defaultHistoryCount, StateFilter? filter}) async {
+    if (isRequestingHistory) return;
+    isRequestingHistory = true;
+    await _requestEvents(
+      direction: Direction.b,
+      historyCount: historyCount,
+      filter: filter,
+    );
+    isRequestingHistory = false;
   }
 
   @override
@@ -200,8 +420,10 @@ class ThreadTimeline extends Timeline {
 
   @override
   Future<void> setReadMarker({String? eventId, bool? public}) {
-    // TODO: implement setReadMarker
-    throw UnimplementedError();
+    return thread.setReadMarker(
+      eventId: eventId,
+      public: public,
+    );
   }
 
   @override

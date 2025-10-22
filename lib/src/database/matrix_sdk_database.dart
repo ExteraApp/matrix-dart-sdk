@@ -59,6 +59,7 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
   late Box<String> _clientBox;
   late Box<Map> _accountDataBox;
   late Box<Map> _roomsBox;
+  late Box<Map> _threadsBox;
   late Box<Map> _toDeviceQueueBox;
 
   /// Key is a tuple as TupleKey(roomId, type, stateKey) where stateKey can be
@@ -121,6 +122,8 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
   static const String _accountDataBoxName = 'box_account_data';
 
   static const String _roomsBoxName = 'box_rooms';
+
+  static const String _threadsBoxName = 'box_threads';
 
   static const String _toDeviceQueueBoxName = 'box_to_device_queue';
 
@@ -218,6 +221,7 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
         _clientBoxName,
         _accountDataBoxName,
         _roomsBoxName,
+        _threadsBoxName,
         _toDeviceQueueBoxName,
         _preloadRoomStateBoxName,
         _nonPreloadRoomStateBoxName,
@@ -252,6 +256,7 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
     _roomsBox = _collection.openBox<Map>(
       _roomsBoxName,
     );
+    _threadsBox = _collection.openBox<Map>(_threadsBoxName);
     _preloadRoomStateBox = _collection.openBox(
       _preloadRoomStateBoxName,
     );
@@ -357,6 +362,7 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
     _clientBox.clearQuickAccessCache();
     _accountDataBox.clearQuickAccessCache();
     _roomsBox.clearQuickAccessCache();
+    _threadsBox.clearQuickAccessCache();
     _preloadRoomStateBox.clearQuickAccessCache();
     _nonPreloadRoomStateBox.clearQuickAccessCache();
     _roomMembersBox.clearQuickAccessCache();
@@ -383,6 +389,7 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
   @override
   Future<void> clearCache() => transaction(() async {
         await _roomsBox.clear();
+        await _threadsBox.clear();
         await _accountDataBox.clear();
         await _roomAccountDataBox.clear();
         await _preloadRoomStateBox.clear();
@@ -530,6 +537,46 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
         ];
 
         return await _getEventsByIds(eventIds.cast<String>(), room);
+      });
+
+  @override
+  Future<List<Event>> getThreadEventList(
+    Thread thread, {
+    int start = 0,
+    bool onlySending = false,
+    int? limit,
+  }) =>
+      runBenchmarked<List<Event>>('Get event list', () async {
+        // Get the synced event IDs from the store
+        final timelineKey =
+            TupleKey(thread.room.id, '', thread.rootEvent.eventId).toString();
+        final timelineEventIds =
+            (await _timelineFragmentsBox.get(timelineKey) ?? []);
+
+        // Get the local stored SENDING events from the store
+        late final List sendingEventIds;
+        if (start != 0) {
+          sendingEventIds = [];
+        } else {
+          final sendingTimelineKey =
+              TupleKey(thread.room.id, 'SENDING', thread.rootEvent.eventId)
+                  .toString();
+          sendingEventIds =
+              (await _timelineFragmentsBox.get(sendingTimelineKey) ?? []);
+        }
+
+        // Combine those two lists while respecting the start and limit parameters.
+        final end = min(
+          timelineEventIds.length,
+          start + (limit ?? timelineEventIds.length),
+        );
+        final eventIds = [
+          ...sendingEventIds,
+          if (!onlySending && start < timelineEventIds.length)
+            ...timelineEventIds.getRange(start, end),
+        ];
+
+        return await _getEventsByIds(eventIds.cast<String>(), thread.room);
       });
 
   @override
@@ -1054,6 +1101,22 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
   }
 
   @override
+  Future<void> setThreadPrevBatch(
+    String? prevBatch,
+    String roomId,
+    String threadRootEventId,
+    Client client,
+  ) async {
+    final raw =
+        await _threadsBox.get(TupleKey(roomId, threadRootEventId).toString());
+    if (raw == null) return;
+    final thread = Thread.fromJson(copyMap(raw), client);
+    thread.prev_batch = prevBatch;
+    await _threadsBox.put(roomId, thread.toJson());
+    return;
+  }
+
+  @override
   Future<void> setVerifiedUserCrossSigningKey(
     bool verified,
     String userId,
@@ -1303,6 +1366,43 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
   }
 
   @override
+  Future<List<Thread>> getThreadList(String roomId, Client client) async {
+    final allThreadsKeys = await _threadsBox.getAllKeys();
+    final threadsKeys = <String>{};
+    // TERRIBLE implementation. Better to create another box (String[roomId]->List<string>[event ids])
+    for (final key in allThreadsKeys) {
+      if (key.startsWith(roomId)) threadsKeys.add(key);
+    }
+    final threads = <Thread>{};
+
+    
+
+    return threads.toList();
+  }
+
+  @override
+  Future<void> storeThread(
+    String roomId,
+    Event threadRootEvent,
+    Event? lastEvent,
+    bool currentUserParticipated,
+    int count,
+    Client client,
+  ) async {
+    final key = TupleKey(roomId, threadRootEvent.eventId).toString();
+    // final currentRawThread = await _threadsBox.get(key);
+    await _threadsBox.put(
+        key,
+        Thread(
+          room: Room(id: roomId, client: client),
+          rootEvent: threadRootEvent,
+          client: client,
+          currentUserParticipated: currentUserParticipated,
+          count: count,
+        ).toJson());
+  }
+
+  @override
   Future<void> storeRoomUpdate(
     String roomId,
     SyncRoomUpdate roomUpdate,
@@ -1314,6 +1414,7 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
       await forgetRoom(roomId);
       return;
     }
+
     final membership = roomUpdate is LeftRoomUpdate
         ? Membership.leave
         : roomUpdate is InvitedRoomUpdate
@@ -1375,6 +1476,12 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
   @override
   Future<void> deleteTimelineForRoom(String roomId) =>
       _timelineFragmentsBox.delete(TupleKey(roomId, '').toString());
+
+  @override
+  Future<void> deleteTimelineForThread(
+          String roomId, String threadRootEventId) =>
+      _timelineFragmentsBox
+          .delete(TupleKey(roomId, '', threadRootEventId).toString());
 
   @override
   Future<void> storeSSSSCache(

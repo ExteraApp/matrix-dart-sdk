@@ -59,6 +59,17 @@ abstract class DatabaseApi {
 
   Future<List<Room>> getRoomList(Client client);
 
+  Future<List<Thread>> getThreadList(String roomId, Client client);
+
+  Future<void> storeThread(
+    String roomId,
+    Event threadRootEvent,
+    Event? lastEvent,
+    bool currentUserParticipated,
+    int count,
+    Client client,
+  );
+
   Future<Room?> getSingleRoom(
     Client client,
     String roomId, {
@@ -77,6 +88,8 @@ abstract class DatabaseApi {
   );
 
   Future<void> deleteTimelineForRoom(String roomId);
+
+  Future<void> deleteTimelineForThread(String roomId, String threadRootEventId);
 
   /// Stores an EventUpdate object in the database. Must be called inside of
   /// [transaction].
@@ -110,6 +123,13 @@ abstract class DatabaseApi {
 
   Future<List<Event>> getEventList(
     Room room, {
+    int start = 0,
+    bool onlySending = false,
+    int? limit,
+  });
+
+  Future<List<Event>> getThreadEventList(
+    Thread thread, {
     int start = 0,
     bool onlySending = false,
     int? limit,
@@ -264,6 +284,13 @@ abstract class DatabaseApi {
   Future deleteFromToDeviceQueue(int id);
 
   Future removeEvent(String eventId, String roomId);
+
+  Future setThreadPrevBatch(
+    String? prevBatch,
+    String roomId,
+    String threadRootEventId,
+    Client client,
+  );
 
   Future setRoomPrevBatch(
     String? prevBatch,

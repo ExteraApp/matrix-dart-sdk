@@ -1,19 +1,36 @@
 import 'package:matrix/matrix.dart';
+import 'package:matrix/matrix_api_lite/generated/internal.dart';
+import 'package:matrix/src/models/timeline_chunk.dart';
 
 class Thread {
   final Room room;
   final Event rootEvent;
   Event? lastEvent;
   String? prev_batch;
+  bool currentUserParticipated;
+  int count;
   final Client client;
 
   Thread({
     required this.room,
     required this.rootEvent,
     required this.client,
+    required this.currentUserParticipated,
+    required this.count,
     this.prev_batch,
     this.lastEvent,
   });
+
+  Map<String, dynamic> toJson() => {
+        ...rootEvent.toJson(),
+        'unsigned': {
+          'm.thread': {
+            'latest_event': lastEvent?.toJson(),
+            'count': count,
+            'current_user_participated': currentUserParticipated,
+          },
+        },
+      };
 
   factory Thread.fromJson(Map<String, dynamic> json, Client client) {
     final room = client.getRoomById(json['room_id']);
@@ -36,6 +53,9 @@ class Thread {
         room,
       ),
       lastEvent: lastEvent,
+      count: json['unsigned']?['m.relations']?['m.thread']?['count'],
+      currentUserParticipated: json['unsigned']?['m.relations']?['m.thread']
+          ?['current_user_participated'],
     );
     return thread;
   }
@@ -93,6 +113,120 @@ class Thread {
   bool get hasNewMessages {
     // TODO: Implement this
     return false;
+  }
+
+  Future<TimelineChunk?> getEventContext(String eventId) async {
+    // TODO: probably find events with relationship
+    final resp = await client.getEventContext(
+      room.id, eventId,
+      limit: Room.defaultHistoryCount,
+      // filter: jsonEncode(StateFilter(lazyLoadMembers: true).toJson()),
+    );
+
+    final events = [
+      if (resp.eventsAfter != null) ...resp.eventsAfter!.reversed,
+      if (resp.event != null) resp.event!,
+      if (resp.eventsBefore != null) ...resp.eventsBefore!,
+    ].map((e) => Event.fromMatrixEvent(e, room)).toList();
+
+    // Try again to decrypt encrypted events but don't update the database.
+    if (room.encrypted && client.encryptionEnabled) {
+      for (var i = 0; i < events.length; i++) {
+        if (events[i].type == EventTypes.Encrypted &&
+            events[i].content['can_request_session'] == true) {
+          events[i] = await client.encryption!.decryptRoomEvent(events[i]);
+        }
+      }
+    }
+
+    final chunk = TimelineChunk(
+      nextBatch: resp.end ?? '',
+      prevBatch: resp.start ?? '',
+      events: events,
+    );
+
+    return chunk;
+  }
+
+  Future<ThreadTimeline> getTimeline({
+    void Function(int index)? onChange,
+    void Function(int index)? onRemove,
+    void Function(int insertID)? onInsert,
+    void Function()? onNewEvent,
+    void Function()? onUpdate,
+    String? eventContextId,
+    int? limit = Room.defaultHistoryCount,
+  }) async {
+    // await postLoad();
+
+    var events = <Event>[];
+
+    await client.database.transaction(() async {
+      events = await client.database.getThreadEventList(
+        this,
+        limit: limit,
+      );
+    });
+
+    var chunk = TimelineChunk(events: events);
+    // Load the timeline arround eventContextId if set
+    if (eventContextId != null) {
+      if (!events.any((Event event) => event.eventId == eventContextId)) {
+        chunk =
+            await getEventContext(eventContextId) ?? TimelineChunk(events: []);
+      }
+    }
+
+    final timeline = ThreadTimeline(
+      thread: this,
+      chunk: chunk,
+      onChange: onChange,
+      onRemove: onRemove,
+      onInsert: onInsert,
+      onNewEvent: onNewEvent,
+      onUpdate: onUpdate,
+    );
+
+    // Fetch all users from database we have got here.
+    if (eventContextId == null) {
+      final userIds = events.map((event) => event.senderId).toSet();
+      for (final userId in userIds) {
+        if (room.getState(EventTypes.RoomMember, userId) != null) continue;
+        final dbUser = await client.database.getUser(userId, room);
+        if (dbUser != null) room.setState(dbUser);
+      }
+    }
+
+    // Try again to decrypt encrypted events and update the database.
+    if (room.encrypted && client.encryptionEnabled) {
+      // decrypt messages
+      for (var i = 0; i < chunk.events.length; i++) {
+        if (chunk.events[i].type == EventTypes.Encrypted) {
+          if (eventContextId != null) {
+            // for the fragmented timeline, we don't cache the decrypted
+            //message in the database
+            chunk.events[i] = await client.encryption!.decryptRoomEvent(
+              chunk.events[i],
+            );
+          } else {
+            // else, we need the database
+            await client.database.transaction(() async {
+              for (var i = 0; i < chunk.events.length; i++) {
+                if (chunk.events[i].content['can_request_session'] == true) {
+                  chunk.events[i] = await client.encryption!.decryptRoomEvent(
+                    chunk.events[i],
+                    store: !room.isArchived,
+                    updateType: EventUpdateType.history,
+                  );
+                }
+              }
+            });
+          }
+        }
+      }
+    }
+
+    return timeline;
   }
 
   Future<String?> sendTextEvent(
@@ -169,5 +303,57 @@ class Thread {
       threadLastEventId: lastEvent?.eventId,
       threadRootEventId: rootEvent.eventId,
     );
+  }
+
+  Future<void> setReadMarker({String? eventId, bool? public}) async {
+    if (eventId == null) return null;
+    return await client.postReceipt(
+      room.id,
+      (public ?? client.receiptsPublicByDefault)
+          ? ReceiptType.mRead
+          : ReceiptType.mReadPrivate,
+      eventId,
+      threadId: rootEvent.eventId,
+    );
+  }
+
+  Future<int> requestHistory({
+    int historyCount = Room.defaultHistoryCount,
+    void Function()? onHistoryReceived,
+    direction = Direction.b,
+    StateFilter? filter,
+  }) async {
+    final prev_batch = this.prev_batch;
+
+    final storeInDatabase = !room.isArchived;
+
+    // Ensure stateFilter is not null and set lazyLoadMembers to true if not already set
+    filter ??= StateFilter(lazyLoadMembers: true);
+    filter.lazyLoadMembers ??= true;
+
+    if (prev_batch == null) {
+      throw 'Tried to request history without a prev_batch token';
+    }
+    
+    final resp = await client.getRelatingEventsWithRelType(
+      room.id,
+      rootEvent.eventId,
+      RelationshipTypes.thread,
+      from: prev_batch,
+      limit: historyCount,
+      dir: direction,
+      recurse: true,
+    );
+
+    if (onHistoryReceived != null) onHistoryReceived();
+
+    await client.database.transaction(() async {
+      if (storeInDatabase && direction == Direction.b) {
+        this.prev_batch = resp.prevBatch;
+        await client.database.setThreadPrevBatch(resp.prevBatch, room.id, rootEvent.eventId, client);
+      }
+    });
+
+    return resp.chunk.length;
   }
 }

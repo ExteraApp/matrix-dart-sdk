@@ -436,6 +436,9 @@ class RoomTimeline extends Timeline {
     try {
       if (event.roomId != room.id) return;
 
+      // This will be handled by ThreadTimeline
+      if (event.relationshipType == RelationshipTypes.thread) return;
+
       if (type != EventUpdateType.timeline && type != EventUpdateType.history) {
         return;
       }

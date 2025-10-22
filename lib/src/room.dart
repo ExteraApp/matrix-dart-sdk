@@ -1649,7 +1649,7 @@ class Room {
   /// [onChange], [onRemove], [onInsert] and the [onHistoryReceived] callbacks.
   /// This method can also retrieve the timeline at a specific point by setting
   /// the [eventContextId]
-  Future<Timeline> getTimeline({
+  Future<RoomTimeline> getTimeline({
     void Function(int index)? onChange,
     void Function(int index)? onRemove,
     void Function(int insertID)? onInsert,
