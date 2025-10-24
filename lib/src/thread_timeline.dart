@@ -33,6 +33,8 @@ class ThreadTimeline extends Timeline {
   bool allowNewEvent = true;
   
   bool _collectHistoryUpdates = false;
+  
+  bool isRequestingFuture = false;
 
   ThreadTimeline({
     required this.thread,
@@ -368,14 +370,6 @@ class ThreadTimeline extends Timeline {
   }
 
   @override
-  // TODO: implement canRequestFuture
-  bool get canRequestFuture => throw UnimplementedError();
-
-  @override
-  // TODO: implement canRequestHistory
-  bool get canRequestHistory => throw UnimplementedError();
-
-  @override
   void cancelSubscriptions() {
     // TODO: implement cancelSubscriptions
   }
@@ -393,13 +387,6 @@ class ThreadTimeline extends Timeline {
   }
 
   @override
-  Future<void> requestFuture(
-      {int historyCount = Room.defaultHistoryCount, StateFilter? filter}) {
-    // TODO: implement requestFuture
-    throw UnimplementedError();
-  }
-
-  @override
   Future<void> requestHistory(
       {int historyCount = Room.defaultHistoryCount, StateFilter? filter}) async {
     if (isRequestingHistory) return;
@@ -410,12 +397,6 @@ class ThreadTimeline extends Timeline {
       filter: filter,
     );
     isRequestingHistory = false;
-  }
-
-  @override
-  void requestKeys(
-      {bool tryOnlineBackup = true, bool onlineKeyBackupOnly = true}) {
-    // TODO: implement requestKeys
   }
 
   @override
@@ -438,4 +419,47 @@ class ThreadTimeline extends Timeline {
     // TODO: implement startSearch
     throw UnimplementedError();
   }
+
+  @override
+bool get canRequestFuture => chunk.nextBatch != null && chunk.nextBatch!.isNotEmpty;
+
+@override
+bool get canRequestHistory => chunk.prevBatch != null && chunk.prevBatch!.isNotEmpty;
+
+@override
+Future<void> requestFuture({
+  int historyCount = Room.defaultHistoryCount,
+  StateFilter? filter,
+}) async {
+  if (isRequestingFuture || !canRequestFuture) return;
+  isRequestingFuture = true;
+  
+  try {
+    await getThreadEvents(
+      historyCount: historyCount,
+      direction: Direction.f,
+      filter: filter,
+    );
+  } finally {
+    isRequestingFuture = false;
+  }
+}
+
+@override
+void requestKeys({
+  bool tryOnlineBackup = true,
+  bool onlineKeyBackupOnly = true,
+}) {
+  for (final event in events) {
+    if (event.type == EventTypes.Encrypted &&
+        event.messageType == MessageTypes.BadEncrypted &&
+        event.content['can_request_session'] == true) {
+      final sessionId = event.content.tryGet<String>('session_id');
+      final senderKey = event.content.tryGet<String>('sender_key');
+      if (sessionId != null && senderKey != null) {
+        thread.room.requestSessionKey(sessionId, senderKey);
+      }
+    }
+  }
+}
 }

@@ -1368,16 +1368,32 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
   @override
   Future<List<Thread>> getThreadList(String roomId, Client client) async {
     final allThreadsKeys = await _threadsBox.getAllKeys();
-    final threadsKeys = <String>{};
-    // TERRIBLE implementation. Better to create another box (String[roomId]->List<string>[event ids])
-    for (final key in allThreadsKeys) {
-      if (key.startsWith(roomId)) threadsKeys.add(key);
-    }
     final threads = <Thread>{};
 
-    
+    // TERRIBLE implementation. Better to create another box (String[roomId]->List<string>[event ids])
+    for (final key in allThreadsKeys) {
+      if (key.startsWith('$roomId|')) {
+        final thread = await getThread(roomId, key.split('|')[1], client);
+        if (thread != null) {
+          threads.add(thread);
+        }
+      }
+    }
 
     return threads.toList();
+  }
+
+  @override
+  Future<Thread?> getThread(
+    String roomId,
+    String threadRootEventId,
+    Client client,
+  ) async {
+    final key = TupleKey(roomId, threadRootEventId).toString();
+    final thread = await _threadsBox.get(key);
+    if (thread == null) return null;
+    Logs().w(thread.toString());
+    return Thread.fromJson(thread.cast<String, dynamic>(), client);
   }
 
   @override
@@ -1392,14 +1408,16 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
     final key = TupleKey(roomId, threadRootEvent.eventId).toString();
     // final currentRawThread = await _threadsBox.get(key);
     await _threadsBox.put(
-        key,
-        Thread(
-          room: Room(id: roomId, client: client),
-          rootEvent: threadRootEvent,
-          client: client,
-          currentUserParticipated: currentUserParticipated,
-          count: count,
-        ).toJson());
+      key,
+      Thread(
+        room: Room(id: roomId, client: client),
+        rootEvent: threadRootEvent,
+        lastEvent: lastEvent,
+        client: client,
+        currentUserParticipated: currentUserParticipated,
+        count: count,
+      ).toJson(),
+    );
   }
 
   @override

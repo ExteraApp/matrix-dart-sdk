@@ -61,6 +61,8 @@ abstract class DatabaseApi {
 
   Future<List<Thread>> getThreadList(String roomId, Client client);
 
+  Future<Thread?> getThread(String roomId, String threadRootEventId, Client client);
+
   Future<void> storeThread(
     String roomId,
     Event threadRootEvent,

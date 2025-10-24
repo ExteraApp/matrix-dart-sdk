@@ -7,8 +7,8 @@ class Thread {
   final Event rootEvent;
   Event? lastEvent;
   String? prev_batch;
-  bool currentUserParticipated;
-  int count;
+  bool? currentUserParticipated;
+  int? count;
   final Client client;
 
   Thread({

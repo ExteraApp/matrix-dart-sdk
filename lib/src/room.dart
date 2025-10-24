@@ -130,7 +130,50 @@ class Room {
     for (final state in allStates) {
       setState(state);
     }
+
+    await _loadThreadsFromServer();
+
     partial = false;
+  }
+
+  Future<void> _loadThreadsFromServer() async {
+    try {
+      final response = await client.getThreadRoots(id);
+
+      for (final threadEvent in response.chunk) {
+        final event = Event.fromMatrixEvent(threadEvent, this);
+        // Store thread in database
+        await client.database.storeThread(
+          id,
+          event,
+          event, // lastEvent
+          false, // currentUserParticipated
+          1, // count
+          client,
+        );
+      }
+    } catch (e) {
+      Logs().w('Failed to load threads from server', e);
+    }
+  }
+
+  Future<void> handleThreadSync(Event event) async {
+    // This should be called from the client's sync handling
+    // when a thread-related event is received
+
+    if (event.relationshipType == RelationshipTypes.thread && event.relationshipEventId != null) {
+      // Update thread metadata in database
+      final root = await getEventById(event.relationshipEventId!);
+      if (root == null) return;
+      await client.database.storeThread(
+        id,
+        root,
+        event, // update last event
+        event.senderId == client.userID, // currentUserParticipated
+        1, // increment count - should be calculated properly
+        client,
+      );
+    }
   }
 
   /// Returns the [Event] for the given [typeKey] and optional [stateKey].
@@ -172,6 +215,15 @@ class Room {
     (states[state.type] ??= {})[stateKey] = state;
 
     client.onRoomState.add((roomId: id, state: state));
+  }
+
+  Future<Map<String, Thread>> getThreads() async {
+    final dict = <String, Thread>{};
+    final list = await client.database.getThreadList(id, client);
+    for (final thread in list) {
+      dict[thread.rootEvent.eventId] = thread;
+    }
+    return dict;
   }
 
   /// ID of the fully read marker event.

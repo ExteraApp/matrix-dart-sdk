@@ -36,7 +36,7 @@ class RoomTimeline extends Timeline {
   StreamSubscription<SyncUpdate>? roomSub;
   StreamSubscription<String>? sessionIdReceivedSub;
   StreamSubscription<String>? cancelSendEventSub;
-  
+
   bool isRequestingHistory = false;
   bool isRequestingFuture = false;
   bool allowNewEvent = true;
@@ -417,7 +417,7 @@ class RoomTimeline extends Timeline {
     final searchNeedle = <String>{};
     if (event_id != null) searchNeedle.add(event_id);
     if (unsigned_txid != null) searchNeedle.add(unsigned_txid);
-    
+
     int i;
     for (i = 0; i < events.length; i++) {
       final searchHaystack = <String>{events[i].eventId};
@@ -436,11 +436,14 @@ class RoomTimeline extends Timeline {
     try {
       if (event.roomId != room.id) return;
 
-      // This will be handled by ThreadTimeline
-      if (event.relationshipType == RelationshipTypes.thread) return;
-
       if (type != EventUpdateType.timeline && type != EventUpdateType.history) {
         return;
+      }
+
+      // Skip thread events in main timeline - THEY SHOULD ONLY APPEAR IN THREAD TIMELINES
+      if (event.relationshipType == RelationshipTypes.thread &&
+          event.relationshipEventId != null) {
+        unawaited(room.handleThreadSync(event));
       }
 
       if (type == EventUpdateType.timeline) {
