@@ -1392,7 +1392,6 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
     final key = TupleKey(roomId, threadRootEventId).toString();
     final thread = await _threadsBox.get(key);
     if (thread == null) return null;
-    Logs().w(thread.toString());
     return Thread.fromJson(thread.cast<String, dynamic>(), client);
   }
 

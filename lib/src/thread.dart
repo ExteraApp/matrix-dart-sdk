@@ -45,6 +45,16 @@ class Thread {
         room,
       );
     }
+    if (json['unsigned']?['m.thread']?['latest_event'] != null) {
+      lastEvent = Event.fromMatrixEvent(
+        MatrixEvent.fromJson(
+          json['unsigned']?['m.thread']?['latest_event'],
+        ),
+        room,
+      );
+    }
+    // Although I was making this part according to specification, it's a bit off
+    // I have no clue why
     final thread = Thread(
       room: room,
       client: client,
@@ -334,7 +344,7 @@ class Thread {
     if (prev_batch == null) {
       throw 'Tried to request history without a prev_batch token';
     }
-    
+
     final resp = await client.getRelatingEventsWithRelType(
       room.id,
       rootEvent.eventId,
@@ -350,7 +360,8 @@ class Thread {
     await client.database.transaction(() async {
       if (storeInDatabase && direction == Direction.b) {
         this.prev_batch = resp.prevBatch;
-        await client.database.setThreadPrevBatch(resp.prevBatch, room.id, rootEvent.eventId, client);
+        await client.database.setThreadPrevBatch(
+            resp.prevBatch, room.id, rootEvent.eventId, client);
       }
     });
 

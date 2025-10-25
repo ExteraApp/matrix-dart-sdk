@@ -136,6 +136,8 @@ class Room {
     partial = false;
   }
 
+  Map<String, Thread> threads = <String, Thread>{};
+
   Future<void> _loadThreadsFromServer() async {
     try {
       final response = await client.getThreadRoots(id);
@@ -151,6 +153,7 @@ class Room {
           1, // count
           client,
         );
+        threads[event.eventId] = (await client.database.getThread(id, event.eventId, client))!;
       }
     } catch (e) {
       Logs().w('Failed to load threads from server', e);
@@ -161,7 +164,8 @@ class Room {
     // This should be called from the client's sync handling
     // when a thread-related event is received
 
-    if (event.relationshipType == RelationshipTypes.thread && event.relationshipEventId != null) {
+    if (event.relationshipType == RelationshipTypes.thread &&
+        event.relationshipEventId != null) {
       // Update thread metadata in database
       final root = await getEventById(event.relationshipEventId!);
       if (root == null) return;
@@ -224,6 +228,18 @@ class Room {
       dict[thread.rootEvent.eventId] = thread;
     }
     return dict;
+  }
+
+  Future<Thread> getThread(Event rootEvent) async {
+    final threads = await getThreads();
+    if (threads.containsKey(rootEvent.eventId)) return threads[rootEvent.eventId]!;
+    return Thread(
+      room: this,
+      rootEvent: rootEvent,
+      client: client,
+      currentUserParticipated: false,
+      count: 0,
+    );
   }
 
   /// ID of the fully read marker event.

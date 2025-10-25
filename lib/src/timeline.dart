@@ -45,6 +45,10 @@ abstract class Timeline {
 
   bool get canRequestHistory;
   bool get canRequestFuture;
+  bool get allowNewEvent;
+  bool get isRequestingFuture;
+  bool get isRequestingHistory;
+  bool get isFragmentedTimeline;
 
   Timeline({
     this.onUpdate,

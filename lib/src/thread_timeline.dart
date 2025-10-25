@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:matrix/matrix.dart';
 import 'package:matrix/src/models/timeline_chunk.dart';
@@ -23,17 +22,18 @@ class ThreadTimeline extends Timeline {
   StreamSubscription<String>? sessionIdReceivedSub;
   StreamSubscription<String>? cancelSendEventSub;
 
+  @override
   bool isRequestingHistory = false;
+
+  @override
   bool isFragmentedTimeline = false;
 
   final Map<String, Event> _eventCache = {};
-  
-  bool _fetchedAllDatabaseEvents = false;
-  
+
+  @override
   bool allowNewEvent = true;
-  
-  bool _collectHistoryUpdates = false;
-  
+
+  @override
   bool isRequestingFuture = false;
 
   ThreadTimeline({
@@ -52,6 +52,17 @@ class ThreadTimeline extends Timeline {
     historySub = room.client.onHistoryEvent.stream.listen(
       (event) => _handleEventUpdate(event, EventUpdateType.history),
     );
+
+    // we want to populate our aggregated events
+    for (final e in events) {
+      addAggregatedEvent(e);
+    }
+
+    // we are using a fragmented timeline
+    if (chunk.nextBatch != '') {
+      allowNewEvent = false;
+      isFragmentedTimeline = true;
+    }
   }
 
   void _handleEventUpdate(
@@ -63,7 +74,9 @@ class ThreadTimeline extends Timeline {
       if (event.roomId != thread.room.id) return;
       // Ignore events outside of this thread
       if (event.relationshipType != RelationshipTypes.thread ||
-          event.relationshipEventId != thread.rootEvent.eventId) return;
+          event.relationshipEventId != thread.rootEvent.eventId) {
+        return;
+      }
 
       if (type != EventUpdateType.timeline && type != EventUpdateType.history) {
         return;
@@ -152,14 +165,21 @@ class ThreadTimeline extends Timeline {
       dir: direction,
       from: direction == Direction.b ? chunk.prevBatch : chunk.nextBatch,
       limit: historyCount,
+      recurse: true,
+    );
+
+    Logs().w(
+      'Loading thread events from server ${resp.chunk.length} ${resp.prevBatch}',
     );
 
     if (resp.nextBatch == null) {
       Logs().w('We reached the end of the timeline');
     }
 
-    final newNextBatch = direction == Direction.b ? resp.prevBatch : resp.nextBatch;
-    final newPrevBatch = direction == Direction.b ? resp.nextBatch : resp.prevBatch;
+    final newNextBatch =
+        direction == Direction.b ? resp.prevBatch : resp.nextBatch;
+    final newPrevBatch =
+        direction == Direction.b ? resp.nextBatch : resp.prevBatch;
 
     final type = direction == Direction.b
         ? EventUpdateType.history
@@ -193,7 +213,8 @@ class ThreadTimeline extends Timeline {
       if (allowNewEvent) {
         Logs().d('We now allow sync update into the timeline.');
         newEvents.addAll(
-          await thread.client.database.getThreadEventList(thread, onlySending: true),
+          await thread.client.database
+              .getThreadEventList(thread, onlySending: true),
         );
       }
     }
@@ -258,7 +279,8 @@ class ThreadTimeline extends Timeline {
         }
         // Fetch all users from database we have got here.
         for (final event in events) {
-          if (thread.room.getState(EventTypes.RoomMember, event.senderId) != null) {
+          if (thread.room.getState(EventTypes.RoomMember, event.senderId) !=
+              null) {
             continue;
           }
           final dbUser =
@@ -282,7 +304,6 @@ class ThreadTimeline extends Timeline {
           }
         }
       } else {
-        _fetchedAllDatabaseEvents = true;
         Logs().i('No more events found in the store. Request from server...');
 
         if (isFragmentedTimeline) {
@@ -298,16 +319,13 @@ class ThreadTimeline extends Timeline {
             await thread.requestHistory(
               historyCount: historyCount,
               direction: direction,
-              onHistoryReceived: () {
-                _collectHistoryUpdates = true;
-              },
+              onHistoryReceived: () {},
               filter: filter,
             );
           }
         }
       }
     } finally {
-      _collectHistoryUpdates = false;
       isRequestingHistory = false;
       onUpdate?.call();
     }
@@ -387,8 +405,10 @@ class ThreadTimeline extends Timeline {
   }
 
   @override
-  Future<void> requestHistory(
-      {int historyCount = Room.defaultHistoryCount, StateFilter? filter}) async {
+  Future<void> requestHistory({
+    int historyCount = Room.defaultHistoryCount,
+    StateFilter? filter,
+  }) async {
     if (isRequestingHistory) return;
     isRequestingHistory = true;
     await _requestEvents(
@@ -421,45 +441,45 @@ class ThreadTimeline extends Timeline {
   }
 
   @override
-bool get canRequestFuture => chunk.nextBatch != null && chunk.nextBatch!.isNotEmpty;
+  bool get canRequestFuture => chunk.nextBatch.isNotEmpty;
 
-@override
-bool get canRequestHistory => chunk.prevBatch != null && chunk.prevBatch!.isNotEmpty;
+  @override
+  bool get canRequestHistory => chunk.prevBatch.isNotEmpty;
 
-@override
-Future<void> requestFuture({
-  int historyCount = Room.defaultHistoryCount,
-  StateFilter? filter,
-}) async {
-  if (isRequestingFuture || !canRequestFuture) return;
-  isRequestingFuture = true;
-  
-  try {
-    await getThreadEvents(
-      historyCount: historyCount,
-      direction: Direction.f,
-      filter: filter,
-    );
-  } finally {
-    isRequestingFuture = false;
+  @override
+  Future<void> requestFuture({
+    int historyCount = Room.defaultHistoryCount,
+    StateFilter? filter,
+  }) async {
+    if (isRequestingFuture || !canRequestFuture) return;
+    isRequestingFuture = true;
+
+    try {
+      await getThreadEvents(
+        historyCount: historyCount,
+        direction: Direction.f,
+        filter: filter,
+      );
+    } finally {
+      isRequestingFuture = false;
+    }
   }
-}
 
-@override
-void requestKeys({
-  bool tryOnlineBackup = true,
-  bool onlineKeyBackupOnly = true,
-}) {
-  for (final event in events) {
-    if (event.type == EventTypes.Encrypted &&
-        event.messageType == MessageTypes.BadEncrypted &&
-        event.content['can_request_session'] == true) {
-      final sessionId = event.content.tryGet<String>('session_id');
-      final senderKey = event.content.tryGet<String>('sender_key');
-      if (sessionId != null && senderKey != null) {
-        thread.room.requestSessionKey(sessionId, senderKey);
+  @override
+  void requestKeys({
+    bool tryOnlineBackup = true,
+    bool onlineKeyBackupOnly = true,
+  }) {
+    for (final event in events) {
+      if (event.type == EventTypes.Encrypted &&
+          event.messageType == MessageTypes.BadEncrypted &&
+          event.content['can_request_session'] == true) {
+        final sessionId = event.content.tryGet<String>('session_id');
+        final senderKey = event.content.tryGet<String>('sender_key');
+        if (sessionId != null && senderKey != null) {
+          thread.room.requestSessionKey(sessionId, senderKey);
+        }
       }
     }
   }
-}
 }

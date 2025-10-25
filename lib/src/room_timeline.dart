@@ -37,9 +37,13 @@ class RoomTimeline extends Timeline {
   StreamSubscription<String>? sessionIdReceivedSub;
   StreamSubscription<String>? cancelSendEventSub;
 
+  @override
   bool isRequestingHistory = false;
+  @override
   bool isRequestingFuture = false;
+  @override
   bool allowNewEvent = true;
+  @override
   bool isFragmentedTimeline = false;
 
   final Map<String, Event> _eventCache = {};
