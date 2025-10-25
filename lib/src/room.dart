@@ -137,10 +137,14 @@ class Room {
   }
 
   Map<String, Thread> threads = <String, Thread>{};
+  String? getThreadRootsBatch;
+  bool loadedAllThreads = false;
 
   Future<void> _loadThreadsFromServer() async {
     try {
-      final response = await client.getThreadRoots(id);
+      if (loadedAllThreads) return;
+      final response =
+          await client.getThreadRoots(id, from: getThreadRootsBatch);
 
       for (final threadEvent in response.chunk) {
         final event = Event.fromMatrixEvent(threadEvent, this);
@@ -153,7 +157,14 @@ class Room {
           1, // count
           client,
         );
-        threads[event.eventId] = (await client.database.getThread(id, event.eventId, client))!;
+        threads[event.eventId] =
+            (await client.database.getThread(id, event.eventId, client))!;
+      }
+
+      if (response.nextBatch == null) {
+        loadedAllThreads = true;
+      } else {
+        getThreadRootsBatch = response.nextBatch;
       }
     } catch (e) {
       Logs().w('Failed to load threads from server', e);
@@ -232,7 +243,8 @@ class Room {
 
   Future<Thread> getThread(Event rootEvent) async {
     final threads = await getThreads();
-    if (threads.containsKey(rootEvent.eventId)) return threads[rootEvent.eventId]!;
+    if (threads.containsKey(rootEvent.eventId))
+      return threads[rootEvent.eventId]!;
     return Thread(
       room: this,
       rootEvent: rootEvent,
@@ -1511,6 +1523,9 @@ class Room {
     direction = Direction.b,
     StateFilter? filter,
   }) async {
+
+    unawaited(_loadThreadsFromServer());
+
     final prev_batch = this.prev_batch;
 
     final storeInDatabase = !isArchived;
