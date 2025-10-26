@@ -68,6 +68,8 @@ abstract class DatabaseApi {
     Event threadRootEvent,
     Event? lastEvent,
     bool currentUserParticipated,
+    int? notificationCount,
+    int? highlightCount,
     int count,
     Client client,
   );

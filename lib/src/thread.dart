@@ -1,5 +1,6 @@
+import 'dart:async';
+
 import 'package:matrix/matrix.dart';
-import 'package:matrix/matrix_api_lite/generated/internal.dart';
 import 'package:matrix/src/models/timeline_chunk.dart';
 
 class Thread {
@@ -11,15 +12,27 @@ class Thread {
   int? count;
   final Client client;
 
+  /// The count of unread notifications.
+  int notificationCount = 0;
+
+  /// The count of highlighted notifications.
+  int highlightCount = 0;
+
   Thread({
     required this.room,
     required this.rootEvent,
     required this.client,
     required this.currentUserParticipated,
     required this.count,
+    required this.notificationCount,
+    required this.highlightCount,
     this.prev_batch,
     this.lastEvent,
   });
+
+  /// Returns true if this room is unread. To check if there are new messages
+  /// in muted rooms, use [hasNewMessages].
+  bool get isUnread => notificationCount > 0;
 
   Map<String, dynamic> toJson() => {
         ...rootEvent.toJson(),
@@ -66,8 +79,18 @@ class Thread {
       count: json['unsigned']?['m.relations']?['m.thread']?['count'],
       currentUserParticipated: json['unsigned']?['m.relations']?['m.thread']
           ?['current_user_participated'],
+      highlightCount: 0,
+      notificationCount: 0,
     );
     return thread;
+  }
+
+  Future<Event?> refreshLastEvent({
+    timeout = const Duration(seconds: 30),
+  }) async {
+    final lastEvent = _refreshingLastEvent ??= _refreshLastEvent();
+    _refreshingLastEvent = null;
+    return lastEvent;
   }
 
   Future<Event?>? _refreshingLastEvent;
@@ -121,8 +144,27 @@ class Thread {
   }
 
   bool get hasNewMessages {
-    // TODO: Implement this
-    return false;
+    final lastEvent = this.lastEvent;
+
+    // There is no known event or the last event is only a state fallback event,
+    // we assume there is no new messages.
+    if (lastEvent == null ||
+        !client.roomPreviewLastEvents.contains(lastEvent.type)) {
+      return false;
+    }
+
+    // Read marker is on the last event so no new messages.
+    if (lastEvent.receipts
+        .any((receipt) => receipt.user.senderId == client.userID!)) {
+      return false;
+    }
+
+    // If the last event is sent, we mark the room as read.
+    if (lastEvent.senderId == client.userID) return false;
+
+    // Get the timestamp of read marker and compare
+    final readAtMilliseconds = room.receiptState.byThread[rootEvent.eventId]?.latestOwnReceipt?.ts ?? 0;
+    return readAtMilliseconds < lastEvent.originServerTs.millisecondsSinceEpoch;
   }
 
   Future<TimelineChunk?> getEventContext(String eventId) async {
@@ -324,6 +366,22 @@ class Thread {
           : ReceiptType.mReadPrivate,
       eventId,
       threadId: rootEvent.eventId,
+    );
+  }
+
+  Future<void> setLastEvent(Event event) async {
+    lastEvent = event;
+    final thread = await client.database.getThread(room.id, rootEvent.eventId, client);
+    Logs().v('Set lastEvent to ${room.id}:${rootEvent.eventId} (${event.senderId})');
+    await client.database.storeThread(
+      room.id,
+      rootEvent,
+      lastEvent,
+      currentUserParticipated ?? false,
+      notificationCount,
+      highlightCount,
+      (thread?.count ?? 0) + 1,
+      client,
     );
   }
 

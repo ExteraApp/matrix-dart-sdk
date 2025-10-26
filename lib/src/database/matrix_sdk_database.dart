@@ -1401,6 +1401,8 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
     Event threadRootEvent,
     Event? lastEvent,
     bool currentUserParticipated,
+    int? notificationCount,
+    int? highlightCount,
     int count,
     Client client,
   ) async {
@@ -1415,6 +1417,8 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
         client: client,
         currentUserParticipated: currentUserParticipated,
         count: count,
+        notificationCount: notificationCount ?? 0,
+        highlightCount: highlightCount ?? 0,
       ).toJson(),
     );
   }

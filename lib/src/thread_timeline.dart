@@ -119,6 +119,8 @@ class ThreadTimeline extends Timeline {
         addAggregatedEvent(event);
       }
 
+      unawaited(thread.setLastEvent(events[events.length - 1]));
+
       // Handle redaction events
       if (event.type == EventTypes.Redaction) {
         final index = _findEvent(event_id: event.redacts);
@@ -428,14 +430,15 @@ class ThreadTimeline extends Timeline {
   }
 
   @override
-  Stream<(List<Event>, String?)> startSearch(
-      {String? searchTerm,
-      int requestHistoryCount = 100,
-      int maxHistoryRequests = 10,
-      String? prevBatch,
-      String? sinceEventId,
-      int? limit,
-      bool Function(Event p1)? searchFunc}) {
+  Stream<(List<Event>, String?)> startSearch({
+    String? searchTerm,
+    int requestHistoryCount = 100,
+    int maxHistoryRequests = 10,
+    String? prevBatch,
+    String? sinceEventId,
+    int? limit,
+    bool Function(Event p1)? searchFunc,
+  }) {
     // TODO: implement startSearch
     throw UnimplementedError();
   }
@@ -466,10 +469,10 @@ class ThreadTimeline extends Timeline {
   }
 
   @override
-  void requestKeys({
+  Future<void> requestKeys({
     bool tryOnlineBackup = true,
     bool onlineKeyBackupOnly = true,
-  }) {
+  }) async {
     for (final event in events) {
       if (event.type == EventTypes.Encrypted &&
           event.messageType == MessageTypes.BadEncrypted &&
@@ -477,7 +480,7 @@ class ThreadTimeline extends Timeline {
         final sessionId = event.content.tryGet<String>('session_id');
         final senderKey = event.content.tryGet<String>('sender_key');
         if (sessionId != null && senderKey != null) {
-          thread.room.requestSessionKey(sessionId, senderKey);
+          await thread.room.requestSessionKey(sessionId, senderKey);
         }
       }
     }

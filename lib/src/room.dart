@@ -26,7 +26,6 @@ import 'package:html_unescape/html_unescape.dart';
 
 import 'package:matrix/matrix.dart';
 import 'package:matrix/src/models/timeline_chunk.dart';
-import 'package:matrix/src/room_timeline.dart';
 import 'package:matrix/src/utils/cached_stream_controller.dart';
 import 'package:matrix/src/utils/file_send_request_credentials.dart';
 import 'package:matrix/src/utils/markdown.dart';
@@ -148,17 +147,18 @@ class Room {
 
       for (final threadEvent in response.chunk) {
         final event = Event.fromMatrixEvent(threadEvent, this);
+        final thread = Thread.fromJson(threadEvent.toJson(), client);
         // Store thread in database
         await client.database.storeThread(
           id,
           event,
-          event, // lastEvent
-          false, // currentUserParticipated
-          1, // count
+          thread.lastEvent, // lastEvent
+          thread.currentUserParticipated ?? false, // currentUserParticipated
+          0, 0,
+          thread.count ?? 1, // count
           client,
         );
-        threads[event.eventId] =
-            (await client.database.getThread(id, event.eventId, client))!;
+        threads[event.eventId] = thread;
       }
 
       if (response.nextBatch == null) {
@@ -180,12 +180,14 @@ class Room {
       // Update thread metadata in database
       final root = await getEventById(event.relationshipEventId!);
       if (root == null) return;
+      final thread = await client.database.getThread(id, event.relationshipEventId!, client);
       await client.database.storeThread(
         id,
         root,
         event, // update last event
         event.senderId == client.userID, // currentUserParticipated
-        1, // increment count - should be calculated properly
+        (thread?.count ?? 0) + 1, // increment count - should be calculated properly
+        0, 0,
         client,
       );
     }
@@ -243,14 +245,17 @@ class Room {
 
   Future<Thread> getThread(Event rootEvent) async {
     final threads = await getThreads();
-    if (threads.containsKey(rootEvent.eventId))
+    if (threads.containsKey(rootEvent.eventId)) {
       return threads[rootEvent.eventId]!;
+    }
     return Thread(
       room: this,
       rootEvent: rootEvent,
       client: client,
       currentUserParticipated: false,
       count: 0,
+      highlightCount: 0,
+      notificationCount: 0,
     );
   }
 
@@ -1523,7 +1528,6 @@ class Room {
     direction = Direction.b,
     StateFilter? filter,
   }) async {
-
     unawaited(_loadThreadsFromServer());
 
     final prev_batch = this.prev_batch;

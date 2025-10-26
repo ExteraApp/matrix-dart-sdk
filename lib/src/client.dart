@@ -2776,13 +2776,13 @@ class Client extends MatrixApi {
     final List<ReceiptEventContent> receipts = [];
 
     for (final event in events) {
+      
       room.setEphemeral(event);
 
       // Receipt events are deltas between two states. We will create a
       // fake room account data event for this and store the difference
       // there.
       if (event.type != 'm.receipt') continue;
-
       receipts.add(ReceiptEventContent.fromJson(event.content));
     }
 
@@ -2797,6 +2797,7 @@ class Client extends MatrixApi {
         type: LatestReceiptState.eventType,
         content: receiptStateContent.toJson(),
       );
+      
       await database.storeRoomAccountData(room.id, event);
       room.roomAccountData[event.type] = event;
     }
