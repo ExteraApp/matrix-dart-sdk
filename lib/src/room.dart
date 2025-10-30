@@ -130,7 +130,7 @@ class Room {
       setState(state);
     }
 
-    await _loadThreadsFromServer();
+    await loadThreadsFromServer();
 
     partial = false;
   }
@@ -139,7 +139,7 @@ class Room {
   String? getThreadRootsBatch;
   bool loadedAllThreads = false;
 
-  Future<void> _loadThreadsFromServer() async {
+  Future<void> loadThreadsFromServer() async {
     try {
       if (loadedAllThreads) return;
       final response =
@@ -185,11 +185,12 @@ class Room {
         id,
         root,
         event, // update last event
-        event.senderId == client.userID, // currentUserParticipated
+        event.senderId == client.userID || (thread?.currentUserParticipated ?? false), // currentUserParticipated
         (thread?.count ?? 0) + 1, // increment count - should be calculated properly
         0, 0,
         client,
       );
+      threads[event.relationshipEventId!] = (await client.database.getThread(id, event.relationshipEventId!, client))!;
     }
   }
 
@@ -1528,7 +1529,7 @@ class Room {
     direction = Direction.b,
     StateFilter? filter,
   }) async {
-    unawaited(_loadThreadsFromServer());
+    unawaited(loadThreadsFromServer());
 
     final prev_batch = this.prev_batch;
 
