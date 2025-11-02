@@ -129,7 +129,69 @@ class Room {
     for (final state in allStates) {
       setState(state);
     }
+
+    await loadThreadsFromServer();
+
     partial = false;
+  }
+
+  Map<String, Thread> threads = <String, Thread>{};
+  String? getThreadRootsBatch;
+  bool loadedAllThreads = false;
+
+  Future<void> loadThreadsFromServer() async {
+    try {
+      if (loadedAllThreads) return;
+      final response =
+          await client.getThreadRoots(id, from: getThreadRootsBatch);
+
+      for (final threadEvent in response.chunk) {
+        final event = Event.fromMatrixEvent(threadEvent, this);
+        final thread = Thread.fromJson(threadEvent.toJson(), client);
+        // Store thread in database
+        await client.database.storeThread(
+          id,
+          event,
+          thread.lastEvent, // lastEvent
+          thread.currentUserParticipated ?? false, // currentUserParticipated
+          0, 0,
+          thread.count ?? 1, // count
+          client,
+        );
+        threads[event.eventId] = thread;
+      }
+
+      if (response.nextBatch == null) {
+        loadedAllThreads = true;
+      } else {
+        getThreadRootsBatch = response.nextBatch;
+      }
+    } catch (e) {
+      Logs().w('Failed to load threads from server', e);
+    }
+  }
+
+  Future<void> handleThreadSync(Event event) async {
+    // This should be called from the client's sync handling
+    // when a thread-related event is received
+
+    // if (event.relationshipType == RelationshipTypes.thread &&
+    //     event.relationshipEventId != null) {
+      // Update thread metadata in database
+      final root = await getEventById(event.relationshipEventId!);
+      if (root == null) return;
+      final thread = await client.database.getThread(id, event.relationshipEventId!, client);
+      await client.database.storeThread(
+        id,
+        root,
+        event, // update last event
+        event.senderId == client.userID || (thread?.currentUserParticipated ?? false), // currentUserParticipated
+        (thread?.count ?? 0) + 1, // increment count - should be calculated properly
+        0, 0,
+        client,
+      );
+      threads[event.relationshipEventId!] = (await client.database.getThread(id, event.relationshipEventId!, client))!;
+    //}
   }
 
   /// Returns the [Event] for the given [typeKey] and optional [stateKey].
@@ -171,6 +233,31 @@ class Room {
     (states[state.type] ??= {})[stateKey] = state;
 
     client.onRoomState.add((roomId: id, state: state));
+  }
+
+  Future<Map<String, Thread>> getThreads() async {
+    final dict = <String, Thread>{};
+    final list = await client.database.getThreadList(id, client);
+    for (final thread in list) {
+      dict[thread.rootEvent.eventId] = thread;
+    }
+    return dict;
+  }
+
+  Future<Thread> getThread(Event rootEvent) async {
+    final threads = await getThreads();
+    if (threads.containsKey(rootEvent.eventId)) {
+      return threads[rootEvent.eventId]!;
+    }
+    return Thread(
+      room: this,
+      rootEvent: rootEvent,
+      client: client,
+      currentUserParticipated: false,
+      count: 0,
+      highlightCount: 0,
+      notificationCount: 0,
+    );
   }
 
   /// ID of the fully read marker event.
@@ -1442,6 +1529,8 @@ class Room {
     direction = Direction.b,
     StateFilter? filter,
   }) async {
+    unawaited(loadThreadsFromServer());
+
     final prev_batch = this.prev_batch;
 
     final storeInDatabase = !isArchived;
@@ -1648,7 +1737,7 @@ class Room {
   /// [onChange], [onRemove], [onInsert] and the [onHistoryReceived] callbacks.
   /// This method can also retrieve the timeline at a specific point by setting
   /// the [eventContextId]
-  Future<Timeline> getTimeline({
+  Future<RoomTimeline> getTimeline({
     void Function(int index)? onChange,
     void Function(int index)? onRemove,
     void Function(int insertID)? onInsert,
@@ -1690,7 +1779,7 @@ class Room {
       }
     }
 
-    final timeline = Timeline(
+    final timeline = RoomTimeline(
       room: this,
       chunk: chunk,
       onChange: onChange,

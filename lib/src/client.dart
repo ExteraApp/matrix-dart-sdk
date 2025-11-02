@@ -25,6 +25,7 @@ import 'dart:typed_data';
 import 'package:async/async.dart';
 import 'package:collection/collection.dart' show IterableExtension;
 import 'package:http/http.dart' as http;
+import 'package:matrix/src/room_timeline.dart';
 import 'package:mime/mime.dart';
 import 'package:random_string/random_string.dart';
 import 'package:vodozemac/vodozemac.dart' as vod;
@@ -1213,7 +1214,7 @@ class Client extends MatrixApi {
     // Set membership of room to leave, in the case we got a left room passed, otherwise
     // the left room would have still membership join, which would be wrong for the setState later
     archivedRoom.membership = Membership.leave;
-    final timeline = Timeline(
+    final timeline = RoomTimeline(
       room: archivedRoom,
       chunk: TimelineChunk(
         events: roomUpdate.timeline?.events?.reversed
@@ -2775,13 +2776,13 @@ class Client extends MatrixApi {
     final List<ReceiptEventContent> receipts = [];
 
     for (final event in events) {
+      
       room.setEphemeral(event);
 
       // Receipt events are deltas between two states. We will create a
       // fake room account data event for this and store the difference
       // there.
       if (event.type != 'm.receipt') continue;
-
       receipts.add(ReceiptEventContent.fromJson(event.content));
     }
 
@@ -2796,6 +2797,7 @@ class Client extends MatrixApi {
         type: LatestReceiptState.eventType,
         content: receiptStateContent.toJson(),
       );
+      
       await database.storeRoomAccountData(room.id, event);
       room.roomAccountData[event.type] = event;
     }
