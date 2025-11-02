@@ -491,6 +491,15 @@ class RoomTimeline extends Timeline {
         addAggregatedEvent(event);
       }
 
+      if (event.relationshipEventId != null &&
+          (event.relationshipType == RelationshipTypes.edit ||
+              event.relationshipType == RelationshipTypes.reaction ||
+              event.relationshipType == RelationshipTypes.reference)) {
+        final parentEventIndex =
+            _findEvent(event_id: event.relationshipEventId);
+        unawaited(room.handleThreadSync(events[parentEventIndex]));
+      }
+
       // Handle redaction events
       if (event.type == EventTypes.Redaction) {
         final index = _findEvent(event_id: event.redacts);

@@ -105,6 +105,7 @@ class Thread {
           room.id,
           rootEvent.eventId,
           'm.thread',
+          recurse: true,
         )
         .timeout(timeout);
     final matrixEvent = result.chunk.firstOrNull;
@@ -172,14 +173,17 @@ class Thread {
     final resp = await client.getEventContext(
       room.id, eventId,
       limit: Room.defaultHistoryCount,
+      
       // filter: jsonEncode(StateFilter(lazyLoadMembers: true).toJson()),
     );
+
+    
 
     final events = [
       if (resp.eventsAfter != null) ...resp.eventsAfter!.reversed,
       if (resp.event != null) resp.event!,
       if (resp.eventsBefore != null) ...resp.eventsBefore!,
-    ].map((e) => Event.fromMatrixEvent(e, room)).toList();
+    ].map((e) => Event.fromMatrixEvent(e, room)).where((e) => e.relationshipType == RelationshipTypes.thread && e.relationshipEventId == rootEvent.eventId).toList();
 
     // Try again to decrypt encrypted events but don't update the database.
     if (room.encrypted && client.encryptionEnabled) {
@@ -403,10 +407,9 @@ class Thread {
       throw 'Tried to request history without a prev_batch token';
     }
 
-    final resp = await client.getRelatingEventsWithRelType(
+    final resp = await client.getRelatingEvents(
       room.id,
       rootEvent.eventId,
-      RelationshipTypes.thread,
       from: prev_batch,
       limit: historyCount,
       dir: direction,

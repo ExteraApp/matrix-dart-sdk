@@ -73,8 +73,12 @@ class ThreadTimeline extends Timeline {
     try {
       if (event.roomId != thread.room.id) return;
       // Ignore events outside of this thread
-      if (event.relationshipType != RelationshipTypes.thread ||
+      if (event.relationshipType == RelationshipTypes.thread &&
           event.relationshipEventId != thread.rootEvent.eventId) {
+        return;
+      }
+
+      if (event.relationshipType == null) {
         return;
       }
 
@@ -160,10 +164,9 @@ class ThreadTimeline extends Timeline {
     filter ??= StateFilter(lazyLoadMembers: true);
     filter.lazyLoadMembers ??= true;
 
-    final resp = await thread.client.getRelatingEventsWithRelType(
+    final resp = await thread.client.getRelatingEvents(
       thread.room.id,
       thread.rootEvent.eventId,
-      RelationshipTypes.thread,
       dir: direction,
       from: direction == Direction.b ? chunk.prevBatch : chunk.nextBatch,
       limit: historyCount,
@@ -255,6 +258,11 @@ class ThreadTimeline extends Timeline {
     if (onUpdate != null) {
       onUpdate!();
     }
+
+    for (final e in events) {
+      addAggregatedEvent(e);
+    }
+
     return resp.chunk.length;
   }
 
@@ -337,9 +345,13 @@ class ThreadTimeline extends Timeline {
   void addAggregatedEvent(Event event) {
     final relationshipType = event.relationshipType;
     final relationshipEventId = event.relationshipEventId;
-    if (relationshipType == null || relationshipEventId == null) {
+    if (relationshipType == null ||
+        relationshipType == RelationshipTypes.thread ||
+        relationshipEventId == null) {
       return;
     }
+    // Logs().w(
+    //     'Adding aggregated event ${event.type} ${event.eventId} to $relationshipEventId ($relationshipType)');
     final e = (aggregatedEvents[relationshipEventId] ??=
         <String, Set<Event>>{})[relationshipType] ??= <Event>{};
     _removeEventFromSet(e, event);

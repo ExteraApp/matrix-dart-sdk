@@ -175,8 +175,8 @@ class Room {
     // This should be called from the client's sync handling
     // when a thread-related event is received
 
-    if (event.relationshipType == RelationshipTypes.thread &&
-        event.relationshipEventId != null) {
+    // if (event.relationshipType == RelationshipTypes.thread &&
+    //     event.relationshipEventId != null) {
       // Update thread metadata in database
       final root = await getEventById(event.relationshipEventId!);
       if (root == null) return;
@@ -191,7 +191,7 @@ class Room {
         client,
       );
       threads[event.relationshipEventId!] = (await client.database.getThread(id, event.relationshipEventId!, client))!;
-    }
+    //}
   }
 
   /// Returns the [Event] for the given [typeKey] and optional [stateKey].
