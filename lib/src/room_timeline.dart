@@ -497,7 +497,10 @@ class RoomTimeline extends Timeline {
               event.relationshipType == RelationshipTypes.reference)) {
         final parentEventIndex =
             _findEvent(event_id: event.relationshipEventId);
-        unawaited(room.handleThreadSync(events[parentEventIndex]));
+        if (events[parentEventIndex].relationshipType ==
+            RelationshipTypes.thread) {
+          unawaited(room.handleThreadSync(events[parentEventIndex]));
+        }
       }
 
       // Handle redaction events
