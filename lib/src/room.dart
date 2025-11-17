@@ -436,7 +436,7 @@ class Room {
     final cache = _cachedDirectChatMatrixId;
     if (cache != null) {
       final roomIds = client.directChats[cache];
-      if (roomIds is List && roomIds.contains(id)) {
+      if (roomIds != null && roomIds.contains(id)) {
         return cache;
       }
     }
@@ -1608,21 +1608,21 @@ class Room {
 
   /// Sets this room as a direct chat for this user if not already.
   Future<void> addToDirectChat(String userID) async {
-    final directChats = client.directChats;
-    if (directChats[userID] is List) {
-      if (!directChats[userID].contains(id)) {
-        directChats[userID].add(id);
-      } else {
-        return;
-      } // Is already in direct chats
-    } else {
-      directChats[userID] = [id];
+    final dmRooms = List<String>.from(client.directChats[userID] ?? []);
+    if (dmRooms.contains(id)) {
+      Logs().d('Already a direct chat.');
+      return;
     }
+
+    dmRooms.add(id);
 
     await client.setAccountData(
       client.userID!,
       'm.direct',
-      directChats,
+      {
+        ...client.directChats,
+        userID: dmRooms,
+      },
     );
     return;
   }
@@ -2526,18 +2526,30 @@ class Room {
     JoinRules joinRules, {
     /// For restricted rooms, the id of the room where a user needs to be member.
     /// Learn more at https://spec.matrix.org/latest/client-server-api/#restricted-rooms
+    List<String>? allowConditionRoomIds,
+    @Deprecated('Use allowConditionRoomIds instead!')
     String? allowConditionRoomId,
   }) async {
+    if (allowConditionRoomId != null) {
+      allowConditionRoomIds ??= [];
+      allowConditionRoomIds.add(allowConditionRoomId);
+    }
+
     await client.setRoomStateWithKey(
       id,
       EventTypes.RoomJoinRules,
       '',
       {
-        'join_rule': joinRules.toString().replaceAll('JoinRules.', ''),
-        if (allowConditionRoomId != null)
-          'allow': [
-            {'room_id': allowConditionRoomId, 'type': 'm.room_membership'},
-          ],
+        'join_rule': joinRules.text,
+        if (allowConditionRoomIds != null && allowConditionRoomIds.isNotEmpty)
+          'allow': allowConditionRoomIds
+              .map(
+                (allowConditionRoomId) => {
+                  'room_id': allowConditionRoomId,
+                  'type': 'm.room_membership',
+                },
+              )
+              .toList(),
       },
     );
     return;
@@ -2779,10 +2791,21 @@ class Room {
     );
   }
 
-  /// Remove a child from this space by setting the `via` to an empty list.
-  Future<void> removeSpaceChild(String roomId) => !isSpace
-      ? throw Exception('Room is not a space!')
-      : setSpaceChild(roomId, via: const []);
+  /// Remove a child from this space by removing the space child and optionally
+  /// space parent state events.
+  Future<void> removeSpaceChild(String roomId) async {
+    if (!isSpace) throw Exception('Room is not a space!');
+
+    await client.setRoomStateWithKey(id, EventTypes.SpaceChild, roomId, {});
+
+    // Optionally remove the space parent state event in the former space child.
+    if (client
+            .getRoomById(roomId)
+            ?.canChangeStateEvent(EventTypes.SpaceParent) ==
+        true) {
+      await client.setRoomStateWithKey(roomId, EventTypes.SpaceParent, id, {});
+    }
+  }
 
   @override
   bool operator ==(Object other) => (other is Room && other.id == id);
