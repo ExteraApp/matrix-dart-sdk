@@ -469,7 +469,7 @@ class Room {
   /// be triggered by the sync loop on demand. Multiple requests will be
   /// combined to the same request.
   Future<Event?> refreshLastEvent({
-    timeout = const Duration(seconds: 30),
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     final lastEvent = _refreshingLastEvent ??= _refreshLastEvent();
     _refreshingLastEvent = null;
@@ -479,7 +479,7 @@ class Room {
   Future<Event?>? _refreshingLastEvent;
 
   Future<Event?> _refreshLastEvent({
-    timeout = const Duration(seconds: 30),
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     if (membership != Membership.join) return null;
 
