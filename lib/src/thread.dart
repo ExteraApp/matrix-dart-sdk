@@ -105,7 +105,7 @@ class Thread {
           room.id,
           rootEvent.eventId,
           'm.thread',
-          recurse: true,
+          recurse: false,
         )
         .timeout(timeout);
     final matrixEvent = result.chunk.firstOrNull;
