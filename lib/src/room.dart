@@ -1235,42 +1235,6 @@ class Room {
       messageID = txid;
     }
 
-    // Remove reply fallbacks
-    // if (inReplyTo != null) {
-    //   var replyText =
-    //       '<${inReplyTo.senderId}> ${_stripBodyFallback(inReplyTo.body)}';
-    //   replyText = replyText.split('\n').map((line) => '> $line').join('\n');
-    //   content['format'] = 'org.matrix.custom.html';
-    //   // be sure that we strip any previous reply fallbacks
-    //   final replyHtml = (inReplyTo.formattedText.isNotEmpty
-    //           ? inReplyTo.formattedText
-    //           : htmlEscape.convert(inReplyTo.body).replaceAll('\n', '<br>'))
-    //       .replaceAll(
-    //     RegExp(
-    //       r'<mx-reply>.*</mx-reply>',
-    //       caseSensitive: false,
-    //       multiLine: false,
-    //       dotAll: true,
-    //     ),
-    //     '',
-    //   );
-    //   final repliedHtml = content.tryGet<String>('formatted_body') ??
-    //       htmlEscape
-    //           .convert(content.tryGet<String>('body') ?? '')
-    //           .replaceAll('\n', '<br>');
-    //   content['formatted_body'] =
-    //       '<mx-reply><blockquote><a href="https://matrix.to/#/${inReplyTo.roomId!}/${inReplyTo.eventId}">In reply to</a> <a href="https://matrix.to/#/${inReplyTo.senderId}">${inReplyTo.senderId}</a><br>$replyHtml</blockquote></mx-reply>$repliedHtml';
-    //   // We escape all @room-mentions here to prevent accidental room pings when an admin
-    //   // replies to a message containing that!
-    //   content['body'] =
-    //       '${replyText.replaceAll('@room', '@\u200broom')}\n\n${content.tryGet<String>('body') ?? ''}';
-    //   content['m.relates_to'] = {
-    //     'm.in_reply_to': {
-    //       'event_id': inReplyTo.eventId,
-    //     },
-    //   };
-    // }
-
     if (threadRootEventId != null) {
       content['m.relates_to'] = {
         'event_id': threadRootEventId,
