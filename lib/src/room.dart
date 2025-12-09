@@ -1235,6 +1235,14 @@ class Room {
       messageID = txid;
     }
 
+    if (inReplyTo != null) {
+      content['m.relates_to'] = {
+        'm.in_reply_to': {
+          'event_id': inReplyTo.eventId,
+        },
+      };
+    }
+
     if (threadRootEventId != null) {
       content['m.relates_to'] = {
         'event_id': threadRootEventId,
