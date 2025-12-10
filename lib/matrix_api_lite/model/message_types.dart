@@ -34,5 +34,6 @@ abstract class MessageTypes {
   static const String Location = 'm.location';
   static const String Sticker = 'm.sticker';
   static const String BadEncrypted = 'm.bad.encrypted';
+  static const String Poll = 'org.matrix.msc3381.poll.start';
   static const String None = 'm.none';
 }

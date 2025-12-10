@@ -59,6 +59,8 @@ abstract class EventTypes {
   static const String CallAssertedIdentity = 'm.call.asserted_identity';
   static const String CallAssertedIdentityPrefix =
       'org.matrix.call.asserted_identity';
+  static const String PollStart = 'org.matrix.msc3381.poll.start';
+  static const String PollResponse = 'org.matrix.msc3381.poll.response';
   static const String Unknown = 'm.unknown';
 
   /// An internal event type indicating that the last event in the room for

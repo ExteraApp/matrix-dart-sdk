@@ -270,9 +270,11 @@ class Event extends MatrixEvent {
         originServerTs: originServerTs,
       );
 
-  String get messageType => type == EventTypes.Sticker
-      ? MessageTypes.Sticker
-      : (content.tryGet<String>('msgtype') ?? MessageTypes.Text);
+  String get messageType => type == EventTypes.PollStart
+      ? MessageTypes.Poll
+      : type == EventTypes.Sticker
+          ? MessageTypes.Sticker
+          : (content.tryGet<String>('msgtype') ?? MessageTypes.Text);
 
   void setRedactionEvent(Event redactedBecause) {
     unsigned = {
@@ -1124,18 +1126,20 @@ class Event extends MatrixEvent {
   bool get onlyEmotes {
     if (isRichMessage) {
       // calcUnlocalizedBody strips out the <img /> tags in favor of a :placeholder:
-      final formattedTextStripped = formattedText.replaceAll(
-        RegExp(
-          '<mx-reply>.*</mx-reply>',
-          caseSensitive: false,
-          multiLine: false,
-          dotAll: true,
-        ),
-        '',
-      );
+      final formattedTextStripped = formattedText
+          .replaceAll(
+            RegExp(
+              '<mx-reply>.*</mx-reply>',
+              caseSensitive: false,
+              multiLine: false,
+              dotAll: true,
+            ),
+            '',
+          )
+          .trim();
       return _onlyEmojiEmoteRegex.hasMatch(formattedTextStripped);
     } else {
-      return _onlyEmojiRegex.hasMatch(plaintextBody);
+      return _onlyEmojiRegex.hasMatch(plaintextBody.trim());
     }
   }
 
