@@ -1,3 +1,21 @@
+## [4.1.0] 20th December 2025
+- refactor: Deprecated Client.customRefreshTokenLifetime in favor of method parameter (Christian Kußowski)
+
+## [4.0.3] 17th December 2025
+- fix: remove call member event wrt unprotected state keys (td)
+
+## [4.0.2] 16th December 2025
+
+- feat: New searchEvents method in room (Christian Kußowski)
+- fix: config option with voip to use unprotected state keys for group call member events (td)
+- fix: skip unnecessary 404 errors in profile fetching for member displayname change events in timeline (Karthikeyan S)
+
+## [4.0.1] 9th December 2025
+
+- refactor: CI as integrate.yaml file without file (Christian Kußowski)
+- refactor: Update lints package and add missing type annotations (Christian Kußowski)
+- feat: add a flag to use MSC3757 (Yash Garg)
+
 ## [4.0.0] 13th November 2025
 
 Matrix Dart SDK 4.0.0 comes with support for polls, adds first bits towards OIDC and improved

@@ -451,15 +451,21 @@ class Room {
     }
 
     final mxId = client.directChats.entries
-        .firstWhereOrNull((MapEntry<String, dynamic> e) {
-      final roomIds = e.value;
-      return roomIds is List<dynamic> && roomIds.contains(id);
-    })?.key;
+        .firstWhereOrNull((e) => e.value.contains(id))
+        ?.key;
     if (mxId?.isValidMatrixId == true) return _cachedDirectChatMatrixId = mxId;
     return _cachedDirectChatMatrixId = null;
   }
 
-  /// Wheither this is a direct chat or not
+  /// Whether this is a direct chat or not.
+  ///
+  /// Returns `true` if this room is marked as a direct chat in the user's
+  /// `m.direct` account data. Note that this is a user-level annotation,
+  /// not an inherent property of the room - a room with only 2 members
+  /// is NOT automatically considered a direct chat.
+  ///
+  /// To mark a room as a direct chat, use [addToDirectChat] or set
+  /// `isDirect: true` when creating the room.
   bool get isDirectChat => directChatMatrixID != null;
 
   Event? lastEvent;
@@ -2030,8 +2036,18 @@ class Room {
           if (!ignoreErrors) {
             rethrow;
           } else {
-            Logs()
-                .w('Unable to request the profile $mxID from the server', e, s);
+            if (e is MatrixException && e.errcode == 'M_NOT_FOUND') {
+              Logs().v(
+                'Unable to request the profile $mxID from the server (user not found)',
+                e,
+              );
+            } else {
+              Logs().w(
+                'Unable to request the profile $mxID from the server',
+                e,
+                s,
+              );
+            }
           }
         }
       }
@@ -2778,6 +2794,100 @@ class Room {
         true) {
       await client.setRoomStateWithKey(roomId, EventTypes.SpaceParent, id, {});
     }
+  }
+
+  /// Performs a search for `searchTerm` or a more complex `searchFunc()`.
+  /// Be aware that the entire room history (limited by `limit`) will be
+  /// downloaded, decrypted and then checked which needs a lot of time. If
+  /// there are events left in the timeline you get a `nextBatch` back which
+  /// you can use for the next iteration.
+  Future<
+      ({
+        List<Event> events,
+        String? nextBatch,
+        DateTime? searchedUntil,
+      })> searchEvents({
+    String? searchTerm,
+    bool Function(Event)? searchFunc,
+    String? nextBatch,
+
+    /// The amount of events requested from the server in one call. Also used
+    /// to chunk database requests.
+    int limit = 1000,
+
+    /// Other event types are not requested from the server.
+    Set<String> includeEventTypes = const {
+      EventTypes.Message,
+      EventTypes.Encrypted,
+    },
+  }) async {
+    assert(searchTerm != null || searchFunc != null);
+
+    searchFunc ??= (event) => event.body.toLowerCase().contains(
+          searchTerm!.toLowerCase(),
+        );
+    final foundEvents = <Event>[];
+
+    // We first check out what we have in database:
+    if (nextBatch == null) {
+      List<Event> databaseEvents;
+      var start = 0;
+      var timelineComplete = false;
+      do {
+        databaseEvents = await client.database
+            .getEventList(this, start: start, limit: limit);
+        if (databaseEvents.lastOrNull?.type == EventTypes.RoomCreate) {
+          timelineComplete = true;
+          break;
+        }
+        start += limit;
+        foundEvents.addAll(databaseEvents.where(searchFunc));
+      } while (databaseEvents.isNotEmpty);
+
+      if (timelineComplete) {
+        // We have the complete timeline locally, so we stop here:
+        return (
+          events: foundEvents,
+          nextBatch: null,
+          searchedUntil: databaseEvents.lastOrNull?.originServerTs,
+        );
+      }
+    }
+
+    final filter = StateFilter(types: includeEventTypes.toList());
+    nextBatch ??= prev_batch;
+    // Request `limit` events from server, decrypt and filter them and return.
+    final historyResult = await client.getRoomEvents(
+      id,
+      Direction.b,
+      from: nextBatch ?? prev_batch,
+      limit: limit,
+      filter: jsonEncode(filter.toJson()),
+    );
+    final events = historyResult.chunk
+        .map((matrixEvent) => Event.fromMatrixEvent(matrixEvent, this))
+        .toList();
+
+    // Decrypt all events one after another:
+    for (final (index, event) in events.indexed) {
+      if (event.type == EventTypes.Encrypted) {
+        final decrypted = await client.encryption?.decryptRoomEvent(
+          event,
+          store: false,
+          updateType: EventUpdateType.history,
+        );
+        if (decrypted != null && decrypted.type != EventTypes.Encrypted) {
+          events[index] = decrypted;
+        }
+      }
+    }
+    events.removeWhere((event) => event.type == EventTypes.Encrypted);
+    foundEvents.addAll(events.where(searchFunc));
+    return (
+      events: foundEvents,
+      nextBatch: historyResult.end,
+      searchedUntil: historyResult.chunk.lastOrNull?.originServerTs,
+    );
   }
 
   @override

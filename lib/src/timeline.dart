@@ -98,24 +98,6 @@ abstract class Timeline {
 
   /// Cancel all subscriptions
   void cancelSubscriptions();
-
-  @Deprecated('Use [startSearch] instead.')
-  Stream<List<Event>> searchEvent({
-    String? searchTerm,
-    int requestHistoryCount = 100,
-    int maxHistoryRequests = 10,
-    String? sinceEventId,
-    int? limit,
-    bool Function(Event)? searchFunc,
-  }) =>
-      startSearch(
-        searchTerm: searchTerm,
-        requestHistoryCount: requestHistoryCount,
-        maxHistoryRequests: maxHistoryRequests,
-        sinceEventId: sinceEventId,
-        limit: limit,
-        searchFunc: searchFunc,
-      ).map((result) => result.$1);
 }
 
 // TODO: make up a better name

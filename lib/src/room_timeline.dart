@@ -532,6 +532,33 @@ class RoomTimeline extends Timeline {
     }
   }
 
+  @Deprecated('Use [Room.searchEvent] instead.')
+  Stream<List<Event>> searchEvent({
+    String? searchTerm,
+    int requestHistoryCount = 100,
+    int maxHistoryRequests = 10,
+    String? sinceEventId,
+    int? limit,
+    bool Function(Event)? searchFunc,
+  }) =>
+      startSearch(
+        searchTerm: searchTerm,
+        requestHistoryCount: requestHistoryCount,
+        maxHistoryRequests: maxHistoryRequests,
+        sinceEventId: sinceEventId,
+        limit: limit,
+        searchFunc: searchFunc,
+      ).map((result) => result.$1);
+
+  /// Searches [searchTerm] in this timeline. It first searches in the
+  /// cache, then in the database and then on the server. The search can
+  /// take a while, which is why this returns a stream so the already found
+  /// events can already be displayed.
+  /// Override the [searchFunc] if you need another search. This will then
+  /// ignore [searchTerm].
+  /// Returns the List of Events and the next prevBatch at the end of the
+  /// search.
+  @Deprecated('Use [Room.searchEvent] instead.')
   @override
   Stream<(List<Event>, String?)> startSearch({
     String? searchTerm,
