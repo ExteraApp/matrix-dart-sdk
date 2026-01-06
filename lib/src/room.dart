@@ -177,20 +177,24 @@ class Room {
 
     // if (event.relationshipType == RelationshipTypes.thread &&
     //     event.relationshipEventId != null) {
-      // Update thread metadata in database
-      final root = await getEventById(event.relationshipEventId!);
-      if (root == null) return;
-      final thread = await client.database.getThread(id, event.relationshipEventId!, client);
-      await client.database.storeThread(
-        id,
-        root,
-        event, // update last event
-        event.senderId == client.userID || (thread?.currentUserParticipated ?? false), // currentUserParticipated
-        (thread?.count ?? 0) + 1, // increment count - should be calculated properly
-        0, 0,
-        client,
-      );
-      threads[event.relationshipEventId!] = (await client.database.getThread(id, event.relationshipEventId!, client))!;
+    // Update thread metadata in database
+    final root = await getEventById(event.relationshipEventId!);
+    if (root == null) return;
+    final thread =
+        await client.database.getThread(id, event.relationshipEventId!, client);
+    await client.database.storeThread(
+      id,
+      root,
+      event, // update last event
+      event.senderId == client.userID ||
+          (thread?.currentUserParticipated ?? false), // currentUserParticipated
+      (thread?.count ?? 0) +
+          1, // increment count - should be calculated properly
+      0, 0,
+      client,
+    );
+    threads[event.relationshipEventId!] = (await client.database
+        .getThread(id, event.relationshipEventId!, client))!;
     //}
   }
 
@@ -804,6 +808,7 @@ class Room {
     String? threadLastEventId,
     StringBuffer? commandStdout,
     bool addMentions = true,
+    bool replyMention = false,
 
     /// Displays an event in the timeline with the transaction ID as the event
     /// ID and a status of SENDING, SENT or ERROR until it gets replaced by
@@ -832,9 +837,7 @@ class Room {
       var potentialMentions = message
           .split('@')
           .map(
-            (text) => text.startsWith('[')
-                ? '@${text.split(']').first}]'
-                : '@${text.split(RegExp(r'\s+')).first}',
+            (text) => '@${text.split(RegExp(r'\s+')).first}',
           )
           .toList()
         ..removeAt(0);
@@ -842,9 +845,9 @@ class Room {
       final hasRoomMention = potentialMentions.remove('@room');
 
       potentialMentions = potentialMentions
+          .where((mention) => mention.isValidMatrixId)
           .map(
-            (mention) =>
-                mention.isValidMatrixId ? mention : getMention(mention),
+            (mention) => mention,
           )
           .nonNulls
           .toSet() // Deduplicate
@@ -856,7 +859,7 @@ class Room {
 
       if (hasRoomMention || potentialMentions.isNotEmpty) {
         event['m.mentions'] = {
-          if (hasRoomMention) 'room': true,
+          if (hasRoomMention && replyMention) 'room': true,
           if (potentialMentions.isNotEmpty) 'user_ids': potentialMentions,
         };
       }
@@ -1194,25 +1197,6 @@ class Room {
       txid,
       sendMessageContent,
     );
-  }
-
-  String _stripBodyFallback(String body) {
-    if (body.startsWith('> <@')) {
-      var temp = '';
-      var inPrefix = true;
-      for (final l in body.split('\n')) {
-        if (inPrefix && (l.isEmpty || l.startsWith('> '))) {
-          continue;
-        }
-
-        inPrefix = false;
-        temp += temp.isEmpty ? l : ('\n$l');
-      }
-
-      return temp;
-    } else {
-      return body;
-    }
   }
 
   /// Sends an event to this room with this json as a content. Returns the
