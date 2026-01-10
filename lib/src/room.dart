@@ -856,7 +856,6 @@ class Room {
         ..remove(client.userID); // We should never mention ourself.
 
       // https://spec.matrix.org/v1.7/client-server-api/#mentioning-the-replied-to-user
-      print("inReplyTo ${inReplyTo!.senderId} | $replyMention | $potentialMentions");
       if (inReplyTo != null && replyMention) potentialMentions.add(inReplyTo.senderId);
 
       if (hasRoomMention || potentialMentions.isNotEmpty) {
