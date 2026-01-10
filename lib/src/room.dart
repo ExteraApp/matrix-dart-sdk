@@ -821,6 +821,7 @@ class Room {
         this,
         message,
         inReplyTo: inReplyTo,
+        replyMention: replyMention,
         editEventId: editEventId,
         txid: txid,
         threadRootEventId: threadRootEventId,
