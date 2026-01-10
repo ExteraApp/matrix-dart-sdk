@@ -855,11 +855,11 @@ class Room {
         ..remove(client.userID); // We should never mention ourself.
 
       // https://spec.matrix.org/v1.7/client-server-api/#mentioning-the-replied-to-user
-      if (inReplyTo != null) potentialMentions.add(inReplyTo.senderId);
+      if (inReplyTo != null && replyMention) potentialMentions.add(inReplyTo.senderId);
 
       if (hasRoomMention || potentialMentions.isNotEmpty) {
         event['m.mentions'] = {
-          if (hasRoomMention && replyMention) 'room': true,
+          if (hasRoomMention) 'room': true,
           if (potentialMentions.isNotEmpty) 'user_ids': potentialMentions,
         };
       }
