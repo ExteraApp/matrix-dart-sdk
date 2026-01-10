@@ -49,6 +49,7 @@ extension CommandsClientExtension on Client {
     Room? room,
     String msg, {
     Event? inReplyTo,
+    bool replyMention = false,
     String? editEventId,
     String? txid,
     String? threadRootEventId,
@@ -57,6 +58,7 @@ extension CommandsClientExtension on Client {
   }) async {
     final args = CommandArgs(
       inReplyTo: inReplyTo,
+      replyMention: replyMention,
       editEventId: editEventId,
       msg: '',
       client: this,
@@ -113,6 +115,7 @@ extension CommandsClientExtension on Client {
       return await room.sendTextEvent(
         args.msg,
         inReplyTo: args.inReplyTo,
+        replyMention: args.replyMention ?? false,
         editEventId: args.editEventId,
         parseCommands: false,
         txid: args.txid,
@@ -490,11 +493,13 @@ class CommandArgs {
   String? txid;
   String? threadRootEventId;
   String? threadLastEventId;
+  bool? replyMention;
 
   CommandArgs({
     required this.msg,
     this.editEventId,
     this.inReplyTo,
+    this.replyMention,
     required this.client,
     this.room,
     this.txid,
