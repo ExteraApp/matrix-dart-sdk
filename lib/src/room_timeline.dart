@@ -463,7 +463,7 @@ class RoomTimeline extends Timeline {
         unsigned_txid: event.transactionId,
       );
 
-      if (i < events.length) {
+      if (i < events.length - 1) {
         // if the old status is larger than the new one, we also want to preserve the old status
         final oldStatus = events[i].status;
         events[i] = event;
