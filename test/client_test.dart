@@ -208,7 +208,7 @@ void main() {
       expect(matrix.rooms[1].ephemerals.length, 2);
       expect(matrix.rooms[1].typingUsers.length, 1);
       expect(matrix.rooms[1].typingUsers[0].id, '@alice:example.com');
-      expect(matrix.rooms[1].roomAccountData.length, 3);
+      expect(matrix.rooms[1].roomAccountData.length, 2);
       expect(matrix.rooms[1].encrypted, true);
       expect(
         matrix.rooms[1].encryptionAlgorithm,
@@ -254,7 +254,6 @@ void main() {
             ?.verified,
         false,
       );
-      expect(matrix.wellKnown, isNull);
 
       await matrix.handleSync(
         SyncUpdate.fromJson({
@@ -327,9 +326,11 @@ void main() {
       expect(
         matrix
             .getRoomById('!726s6s6q:example.com')
-            ?.roomAccountData[LatestReceiptState.eventType]
-            ?.type,
-        LatestReceiptState.eventType,
+            ?.receiptState
+            .global
+            .otherUsers['@alice:example.com']!
+            .eventId,
+        '\$7365636s6r6432:example.com',
       );
       expect(
         matrix
@@ -537,6 +538,31 @@ void main() {
       expect(client.isLogged(), true);
       expect(client.userID, 'alice@example.com');
       expect(client.deviceID, 'ABCDEFGH');
+      await client.dispose();
+    });
+
+    test('init() with waitUntilLoadCompletedLoaded does not hang', () async {
+      final client = Client(
+        'testclient',
+        httpClient: FakeMatrixApi(),
+        database: await getDatabase(),
+      );
+      await client
+          .init(
+            newToken: 'abcd',
+            newUserID: '@test:fakeServer.notExisting',
+            newHomeserver: Uri.parse('https://fakeserver.notexisting'),
+            newDeviceName: 'Test Client',
+            newDeviceID: 'TESTDEVICE',
+            waitUntilLoadCompletedLoaded: true,
+            waitForFirstSync: false,
+          )
+          .timeout(
+            const Duration(seconds: 5),
+            onTimeout: () =>
+                throw StateError('init() timed out - likely stuck'),
+          );
+      expect(client.isLogged(), true);
       await client.dispose();
     });
 
@@ -1519,17 +1545,6 @@ void main() {
         client.database.supportsFileStoring,
       );
       await client.dispose(closeDatabase: true);
-    });
-
-    test('wellKnown cache', () async {
-      final client = await getClient();
-      expect(client.wellKnown, null);
-      await client.getWellknown();
-      expect(
-        client.wellKnown?.mHomeserver.baseUrl.host,
-        'fakeserver.notexisting',
-      );
-      await client.dispose();
     });
 
     test('refreshAccessToken', () async {

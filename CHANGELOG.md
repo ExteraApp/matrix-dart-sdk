@@ -1,3 +1,37 @@
+## [6.1.1] 7th Feb 2026
+
+- fix: handle UIA case for unexpectedResponse during exception + tests
+
+## [6.1.0] 6th Feb 2026
+
+- build: Update vodozemac to 0.5.0 (Christian Kußowski)
+- chore: Add tests for OIDC refresh and logout (Christian Kußowski)
+- chore: better default body for unknown message format in calcUnlocalizedBody (Karthikeyan S)
+- chore: Store oidc client id (Christian Kußowski)
+- feat: Logout with oidc (Christian Kußowski)
+- feat: Refresh token with matrix native oidc (Christian Kußowski)
+- fix: Room.searchEvents() returns empty list if all events are cached in db (Christian Kußowski)
+- refactor: Always try deserialize error as matrixexception (Christian Kußowski)
+
+## [6.0.0] 21st Jan 2026
+
+- feat: add an option to intercept log events (#2233) (Yash Garg)
+- feat: Simplified bootstrap with crypto identity extension (Christian Kußowski)
+- fix: don't remove local participant on group call reconnection (Karthikeyan S)
+- refactor: (BREAKING) Use unified requestAndCache method (Christian Kußowski)
+
+## [5.0.0] 12th Jan 2026
+- feat: Implement MSC2964 dynamic client registration (Christian Kußowski)
+- feat: Implement MSC2964 OIDC login flow (Christian Kußowski)
+- feat: MSC4075 - MatrixRTC notification event (call ringing) (Karthikeyan S)
+- feat: send MSC4075 notification event for group calls (Karthikeyan S)
+- fix: override server sent group call leave if we know we are still in a group call (td)
+- fix: unescaped property keys in push rule evaluator + tests (Karthikeyan S)
+- refactor: (BREAKING) Event info map (Christian Kußowski)
+- refactor: Add name property to ssss key and pass through keyId for opening (Christian Kußowski)
+- refactor: Store read receipts in own box instead of room account data (Christian Kußowski)
+- test: \[Room].isDirectChat functionality (Karthikeyan S)
+
 ## [4.1.0] 20th December 2025
 - refactor: Deprecated Client.customRefreshTokenLifetime in favor of method parameter (Christian Kußowski)
 
