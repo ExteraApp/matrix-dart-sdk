@@ -20,6 +20,8 @@ import 'dart:convert';
 
 import 'package:markdown/markdown.dart';
 
+import 'package:matrix/src/utils/matrix_id_string_extension.dart';
+
 const htmlAttrEscape = HtmlEscape(HtmlEscapeMode.attribute);
 
 class SpoilerSyntax extends DelimiterSyntax {
@@ -178,7 +180,7 @@ class PillSyntax extends InlineSyntax {
     final identifier = match[1]!;
     final element = Element.text('a', htmlEscape.convert(identifier));
     element.attributes['href'] =
-        htmlAttrEscape.convert('https://matrix.to/#/$identifier');
+        htmlAttrEscape.convert(matrixUri(identifier));
     parser.addNode(element);
     return true;
   }
@@ -199,7 +201,7 @@ class MentionSyntax extends InlineSyntax {
     }
     final element = Element.text('a', htmlEscape.convert(match[1]!));
     element.attributes['href'] =
-        htmlAttrEscape.convert('https://matrix.to/#/$mention');
+        htmlAttrEscape.convert(matrixUri(mention));
     parser.addNode(element);
     return true;
   }

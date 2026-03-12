@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' show max;
 
 import 'package:sqflite_common/sqlite_api.dart';
+import 'package:sqlite3/open.dart';
 
 import 'package:matrix/matrix.dart';
 
@@ -29,14 +30,15 @@ class SQfLiteEncryptionHelper {
 
   /// Loads the correct [DynamicLibrary] required for SQLCipher
   ///
-  /// This method should be called before any database operations:
+  /// To be used with `package:sqlite3/open.dart`:
   /// ```dart
   /// void main() {
-  ///   SQfLiteEncryptionHelper.ffiInit();
-  ///   runApp(MyApp());
+  ///   final factory = createDatabaseFactoryFfi(
+  ///     ffiInit: SQfLiteEncryptionHelper.ffiInit,
+  ///   );
   /// }
   /// ```
-  static DynamicLibrary Function() ffiInit() => _loadSQLCipherDynamicLibrary;
+  static void ffiInit() => open.overrideForAll(_loadSQLCipherDynamicLibrary);
 
   static DynamicLibrary _loadSQLCipherDynamicLibrary() {
     // Taken from https://github.com/simolus3/sqlite3.dart/blob/e66702c5bec7faec2bf71d374c008d5273ef2b3b/sqlite3/lib/src/load_library.dart#L24

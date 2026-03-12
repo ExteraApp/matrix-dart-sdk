@@ -2773,11 +2773,11 @@ class Room {
     return;
   }
 
-  /// Generates a matrix.to link with appropriate routing info to share the room
+  /// Generates a matrix: URI with appropriate routing info to share the room
   Future<Uri> matrixToInviteLink() async {
     if (canonicalAlias.isNotEmpty) {
       return Uri.parse(
-        'https://matrix.to/#/${Uri.encodeComponent(canonicalAlias)}',
+        matrixUri(canonicalAlias),
       );
     }
     final List queryParameters = [];
@@ -2827,7 +2827,7 @@ class Room {
       queryString += 'via=${queryParameters[i]}';
     }
     return Uri.parse(
-      'https://matrix.to/#/${Uri.encodeComponent(id)}$queryString',
+      '${matrixUri(id)}$queryString',
     );
   }
 

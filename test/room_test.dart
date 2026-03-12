@@ -1798,7 +1798,7 @@ void main() {
       var matrixToLink = await room.matrixToInviteLink();
       expect(
         matrixToLink.toString(),
-        'https://matrix.to/#/%23testalias%3Aexample.com',
+        'matrix:r/testalias:example.com',
       );
 
       room.setState(
@@ -1816,7 +1816,7 @@ void main() {
       matrixToLink = await room.matrixToInviteLink();
       expect(
         matrixToLink.toString(),
-        'https://matrix.to/#/!localpart%3Aserver.abc?via=fakeServer.notExisting&via=matrix.org&via=example.org',
+        'matrix:roomid/localpart:server.abc?via=fakeServer.notExisting&via=matrix.org&via=example.org',
       );
     });
 

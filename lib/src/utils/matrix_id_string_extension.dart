@@ -117,6 +117,57 @@ extension MatrixIdExtension on String {
   }
 }
 
+/// Converts a Matrix identifier (with sigil) to a matrix: URI string.
+/// For example:
+///   '@user:example.org' -> 'matrix:u/user:example.org'
+///   '#room:example.org' -> 'matrix:r/room:example.org'
+///   '!roomid:example.org' -> 'matrix:roomid/roomid:example.org'
+/// For event IDs, use [matrixEventUri] which requires a room context.
+String matrixUri(String identifier) {
+  if (identifier.isEmpty) return identifier;
+  final sigil = identifier[0];
+  final idWithoutSigil = identifier.substring(1);
+  final encodedId = Uri.encodeComponent(idWithoutSigil).replaceAll('%3A', ':');
+  switch (sigil) {
+    case '@':
+      return 'matrix:u/$encodedId';
+    case '#':
+      return 'matrix:r/$encodedId';
+    case '!':
+      return 'matrix:roomid/$encodedId';
+    case '\$':
+      // Bare event IDs are not yet supported at top level per MSC,
+      // but we provide a best-effort encoding
+      return 'matrix:e/$encodedId';
+    default:
+      return identifier;
+  }
+}
+
+/// Converts a Matrix event identifier to a matrix: URI string with room context.
+/// For example:
+///   matrixEventUri('#room:example.org', '\$eventId') -> 'matrix:r/room:example.org/e/eventId'
+///   matrixEventUri('!roomid:example.org', '\$eventId') -> 'matrix:roomid/roomid:example.org/e/eventId'
+String matrixEventUri(String roomIdentifier, String eventId) {
+  if (roomIdentifier.isEmpty || eventId.isEmpty) return '';
+  final roomSigil = roomIdentifier[0];
+  final roomIdWithoutSigil = roomIdentifier.substring(1);
+  final encodedRoomId =
+      Uri.encodeComponent(roomIdWithoutSigil).replaceAll('%3A', ':');
+  final eventIdWithoutSigil =
+      eventId.startsWith('\$') ? eventId.substring(1) : eventId;
+  final encodedEventId =
+      Uri.encodeComponent(eventIdWithoutSigil).replaceAll('%3A', ':');
+  switch (roomSigil) {
+    case '#':
+      return 'matrix:r/$encodedRoomId/e/$encodedEventId';
+    case '!':
+      return 'matrix:roomid/$encodedRoomId/e/$encodedEventId';
+    default:
+      return '';
+  }
+}
+
 class MatrixIdentifierStringExtensionResults {
   final String primaryIdentifier;
   final String? secondaryIdentifier;

@@ -93,9 +93,6 @@ abstract class Timeline {
     bool Function(Event)? searchFunc,
   });
 
-  /// Handle event updates (to be implemented by subclasses)
-  void _handleEventUpdate(Event event, EventUpdateType type, {bool update = true});
-
   /// Cancel all subscriptions
   void cancelSubscriptions();
 }

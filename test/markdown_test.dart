@@ -129,15 +129,15 @@ void main() {
     test('pills', () {
       expect(
         markdown('Hey @sorunome:sorunome.de!'),
-        'Hey <a href="https://matrix.to/#/@sorunome:sorunome.de">@sorunome:sorunome.de</a>!',
+        'Hey <a href="matrix:u/sorunome:sorunome.de">@sorunome:sorunome.de</a>!',
       );
       expect(
         markdown('#fox:sorunome.de: you all are awesome'),
-        '<a href="https://matrix.to/#/#fox:sorunome.de">#fox:sorunome.de</a>: you all are awesome',
+        '<a href="matrix:r/fox:sorunome.de">#fox:sorunome.de</a>: you all are awesome',
       );
       expect(
         markdown('!blah:example.org'),
-        '<a href="https://matrix.to/#/!blah:example.org">!blah:example.org</a>',
+        '<a href="matrix:roomid/blah:example.org">!blah:example.org</a>',
       );
       expect(
         markdown('https://matrix.to/#/#fox:sorunome.de'),
@@ -145,25 +145,25 @@ void main() {
       );
       expect(
         markdown('Hey @sorunome:sorunome.de:1234!'),
-        'Hey <a href="https://matrix.to/#/@sorunome:sorunome.de:1234">@sorunome:sorunome.de:1234</a>!',
+        'Hey <a href="matrix:u/sorunome:sorunome.de:1234">@sorunome:sorunome.de:1234</a>!',
       );
       expect(
         markdown('Hey @sorunome:127.0.0.1!'),
-        'Hey <a href="https://matrix.to/#/@sorunome:127.0.0.1">@sorunome:127.0.0.1</a>!',
+        'Hey <a href="matrix:u/sorunome:127.0.0.1">@sorunome:127.0.0.1</a>!',
       );
       expect(
         markdown('Hey @sorunome:[::1]!'),
-        'Hey <a href="https://matrix.to/#/@sorunome:[::1]">@sorunome:[::1]</a>!',
+        'Hey <a href="matrix:u/sorunome:%5B%3A%3A1%5D">@sorunome:[::1]</a>!',
       );
     });
     test('mentions', () {
       expect(
         markdown('Hey @Bob!', getMention: getMention),
-        'Hey <a href="https://matrix.to/#/@bob:example.org">@Bob</a>!',
+        'Hey <a href="matrix:u/bob:example.org">@Bob</a>!',
       );
       expect(
         markdown('How is @[Bob Ross] doing?', getMention: getMention),
-        'How is <a href="https://matrix.to/#/@bobross:example.org">@[Bob Ross]</a> doing?',
+        'How is <a href="matrix:u/bobross:example.org">@[Bob Ross]</a> doing?',
       );
       expect(
         markdown('Hey @invalid!', getMention: getMention),
@@ -171,15 +171,15 @@ void main() {
       );
       expect(
         markdown('Hey @Fox#123!', getMention: getMention),
-        'Hey <a href="https://matrix.to/#/@fox:example.org">@Fox#123</a>!',
+        'Hey <a href="matrix:u/fox:example.org">@Fox#123</a>!',
       );
       expect(
         markdown('Hey @[Fast Fox]#123!', getMention: getMention),
-        'Hey <a href="https://matrix.to/#/@fastfox:example.org">@[Fast Fox]#123</a>!',
+        'Hey <a href="matrix:u/fastfox:example.org">@[Fast Fox]#123</a>!',
       );
       expect(
         markdown('Hey @[">]!', getMention: getMention),
-        'Hey <a href="https://matrix.to/#/@blah:example.org">@[&quot;&gt;]</a>!',
+        'Hey <a href="matrix:u/blah:example.org">@[&quot;&gt;]</a>!',
       );
     });
     test('latex', () {
