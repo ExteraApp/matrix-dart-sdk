@@ -155,7 +155,7 @@ class BlockLatexSyntax extends BlockSyntax {
   Node parse(BlockParser parser) {
     final childLines = parseChildLines(parser);
     // we use .substring(2) as childLines will *always* contain the first two '$$'
-    final latex = childLines.join('\n').trim().substring(2).trim();
+    final latex = childLines.map((line) => line?.content).join('\n').trim().substring(2).trim();
     final element = Element('div', [
       Element('pre', [Element.text('code', htmlEscape.convert(latex))]),
     ]);
