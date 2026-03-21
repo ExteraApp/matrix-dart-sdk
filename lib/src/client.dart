@@ -298,7 +298,9 @@ class Client extends MatrixApi {
             accessToken: legacyFormat.accessToken,
             tokenType: 'Bearer',
             refreshToken: legacyFormat.refreshToken,
-            expiresIn: legacyFormat.expiresInMs,
+            expiresIn: legacyFormat.expiresInMs == null
+                ? null
+                : Duration(milliseconds: legacyFormat.expiresInMs!),
             scope: null,
           ),
         ),
@@ -308,10 +310,9 @@ class Client extends MatrixApi {
     };
 
     accessToken = tokenResponse.accessToken;
-    final expiresInMs = tokenResponse.expiresIn;
-    final tokenExpiresAt = expiresInMs == null
-        ? null
-        : DateTime.now().add(Duration(milliseconds: expiresInMs));
+    final expiresIn = tokenResponse.expiresIn;
+    final tokenExpiresAt =
+        expiresIn == null ? null : DateTime.now().add(expiresIn);
     _accessTokenExpiresAt = tokenExpiresAt;
     await database.updateClient(
       homeserverUrl,
@@ -2372,11 +2373,7 @@ class Client extends MatrixApi {
   Future<void>? _handleSoftLogoutFuture;
 
   Future<void> _handleSoftLogout() async {
-    final onSoftLogout = this.onSoftLogout;
-    if (onSoftLogout == null) {
-      await logout();
-      return;
-    }
+    final onSoftLogout = this.onSoftLogout ?? (_) => refreshAccessToken();
 
     _handleSoftLogoutFuture ??= () async {
       onLoginStateChanged.add(LoginState.softLoggedOut);
@@ -2400,8 +2397,7 @@ class Client extends MatrixApi {
     Duration expiresIn = const Duration(minutes: 1),
   ]) async {
     final tokenExpiresAt = accessTokenExpiresAt;
-    if (onSoftLogout != null &&
-        tokenExpiresAt != null &&
+    if (tokenExpiresAt != null &&
         tokenExpiresAt.difference(DateTime.now()) <= expiresIn) {
       await _handleSoftLogout();
     }
@@ -2633,11 +2629,11 @@ class Client extends MatrixApi {
     final List<ToDeviceEvent> callToDeviceEvents = [];
     for (final event in events) {
       var toDeviceEvent = ToDeviceEvent.fromJson(event.toJson());
-      Logs().v('Got to_device event of type ${toDeviceEvent.type}');
+      Logs().v('Got to_device event ${toDeviceEvent.toJson()} ');
       if (encryptionEnabled) {
         if (toDeviceEvent.type == EventTypes.Encrypted) {
           toDeviceEvent = await encryption!.decryptToDeviceEvent(toDeviceEvent);
-          Logs().v('Decrypted type is: ${toDeviceEvent.type}');
+          Logs().v('Decrypted to_device event is: ${toDeviceEvent.toJson()}');
 
           /// collect new keys so that we can find those events in the decryption queue
           if (toDeviceEvent.type == EventTypes.ForwardedRoomKey ||
@@ -3228,6 +3224,8 @@ class Client extends MatrixApi {
           return a.membership == Membership.invite ? -1 : 1;
         } else if (a.isFavourite != b.isFavourite) {
           return a.isFavourite ? -1 : 1;
+        } else if (a.isLowPriority != b.isLowPriority) {
+          return a.isLowPriority ? 1 : -1;
         } else if (pinUnreadRooms &&
             a.notificationCount != b.notificationCount) {
           return b.notificationCount.compareTo(a.notificationCount);

@@ -153,7 +153,9 @@ class BlockLatexSyntax extends BlockSyntax {
 
   @override
   Node parse(BlockParser parser) {
-    final childLines = parseChildLines(parser);
+    final childLines = parseChildLines(parser)
+        .map((line) => line?.content)
+        .whereType<String>();
     // we use .substring(2) as childLines will *always* contain the first two '$$'
     final latex = childLines.map((line) => line?.content).join('\n').trim().substring(2).trim();
     final element = Element('div', [
