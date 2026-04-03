@@ -950,7 +950,59 @@ class Event extends MatrixEvent {
       localizedBody = '$senderNameOrYou: $localizedBody';
     }
 
+    if (plainFileDescription != null) {
+      localizedBody += '\n\n$plainFileDescription';
+    }
+
     return localizedBody;
+  }
+
+  String? get fileDescription {
+    if (!{
+      MessageTypes.File,
+      MessageTypes.Image,
+      MessageTypes.Audio,
+      MessageTypes.Video,
+    }.contains(messageType)) {
+      return null;
+    }
+    final formattedBody = content.tryGet<String>('formatted_body');
+    if (formattedBody != null) return formattedBody;
+
+    final filename = content.tryGet<String>('filename');
+    final body = content.tryGet<String>('body');
+    if (filename != body && body != null && filename != null) return body;
+    return null;
+  }
+
+  String? get plainFileDescription {
+    if (!{
+      MessageTypes.File,
+      MessageTypes.Image,
+      MessageTypes.Audio,
+      MessageTypes.Video,
+    }.contains(messageType)) {
+      return null;
+    }
+
+    final filename = content.tryGet<String>('filename');
+    final body = content.tryGet<String>('body');
+    if (filename != body && body != null && filename != null) return body;
+    return null;
+  }
+
+  bool get isRichFileDescription {
+    if (!{
+      MessageTypes.File,
+      MessageTypes.Image,
+      MessageTypes.Audio,
+      MessageTypes.Video,
+    }.contains(messageType)) {
+      return false;
+    }
+    final formattedBody = content.tryGet<String>('formatted_body');
+    if (formattedBody != null) return true;
+    return false;
   }
 
   /// Calculating the body of an event regardless of localization.
