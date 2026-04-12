@@ -951,7 +951,7 @@ class Event extends MatrixEvent {
     }
 
     if (plainFileDescription != null) {
-      localizedBody += '\n\n$plainFileDescription';
+      localizedBody += '\n$plainFileDescription';
     }
 
     return localizedBody;
