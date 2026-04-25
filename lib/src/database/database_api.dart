@@ -63,7 +63,8 @@ abstract class DatabaseApi {
 
   Future<List<Thread>> getThreadList(String roomId, Client client);
 
-  Future<Thread?> getThread(String roomId, String threadRootEventId, Client client);
+  Future<Thread?> getThread(
+      String roomId, String threadRootEventId, Client client);
 
   Future<void> storeThread(
     String roomId,
@@ -373,6 +374,21 @@ abstract class DatabaseApi {
   Future<String?> deviceIdSeen(String userId, String deviceId);
 
   Future<String?> publicKeySeen(String publicKey);
+
+  Future<void> storeSecurityIncident(SecurityIncident incident);
+
+  Future<List<SecurityIncident>> getSecurityIncidents({
+    bool includeDismissed = false,
+    int limit = 500,
+  });
+
+  Future<void> dismissSecurityIncident(String id);
+
+  Future<void> deleteSecurityIncident(String id);
+
+  Future<void> deleteOldSecurityIncidents({
+    Duration olderThan = const Duration(days: 90),
+  });
 
   Future<dynamic> close();
 

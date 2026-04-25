@@ -52,7 +52,7 @@ import 'package:matrix/src/database/database_file_storage_stub.dart'
 /// Learn more at:
 /// https://github.com/famedly/matrix-dart-sdk/issues/1642#issuecomment-1865827227
 class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
-  static const int version = 11;
+  static const int version = 12;
   final String name;
 
   late BoxCollection _collection;
@@ -108,6 +108,9 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
   late Box<Map> _userProfilesBox;
 
   late Box<Map> _readReceiptsBox;
+
+  /// Key is [SecurityIncident.id]; value is [SecurityIncident.toJson].
+  late Box<Map> _securityIncidentsBox;
 
   @override
   final int maxFileSize;
@@ -171,6 +174,8 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
   static const String _userProfilesBoxName = 'box_user_profiles';
 
   static const String _readReceiptsBoxName = 'box_read_receipts';
+
+  static const String _securityIncidentsBoxName = 'box_security_incidents';
 
   Database? database;
 
@@ -249,6 +254,7 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
         _seenDeviceKeysBoxName,
         _userProfilesBoxName,
         _readReceiptsBoxName,
+        _securityIncidentsBoxName,
       },
       sqfliteDatabase: database,
       sqfliteFactory: sqfliteFactory,
@@ -325,6 +331,9 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
     _readReceiptsBox = _collection.openBox(
       _readReceiptsBoxName,
     );
+    _securityIncidentsBox = _collection.openBox(
+      _securityIncidentsBoxName,
+    );
 
     // Check version and check if we need a migration
     final currentVersion = int.tryParse(await _clientBox.get('version') ?? '');
@@ -395,6 +404,7 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
     _seenDeviceKeysBox.clearQuickAccessCache();
     _userProfilesBox.clearQuickAccessCache();
     _readReceiptsBox.clearQuickAccessCache();
+    _securityIncidentsBox.clearQuickAccessCache();
 
     await _collection.clear();
   }
@@ -1755,6 +1765,71 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
   }
 
   @override
+  Future<void> storeSecurityIncident(SecurityIncident incident) =>
+      _securityIncidentsBox.put(incident.id, incident.toJson());
+
+  @override
+  Future<List<SecurityIncident>> getSecurityIncidents({
+    bool includeDismissed = false,
+    int limit = 500,
+  }) async {
+    final raw = await _securityIncidentsBox.getAllValues();
+    final incidents = <SecurityIncident>[];
+    for (final entry in raw.values) {
+      try {
+        final incident = SecurityIncident.fromJson(copyMap(entry));
+        if (!includeDismissed && incident.dismissed) continue;
+        incidents.add(incident);
+      } catch (e, s) {
+        Logs().w('Failed to decode SecurityIncident; skipping', e, s);
+      }
+    }
+    incidents.sort((a, b) => b.time.compareTo(a.time));
+    if (limit > 0 && incidents.length > limit) {
+      return incidents.sublist(0, limit);
+    }
+    return incidents;
+  }
+
+  @override
+  Future<void> dismissSecurityIncident(String id) async {
+    final raw = await _securityIncidentsBox.get(id);
+    if (raw == null) return;
+    try {
+      final incident = SecurityIncident.fromJson(copyMap(raw));
+      if (incident.dismissed) return;
+      await _securityIncidentsBox.put(
+        id,
+        incident.copyWith(dismissed: true).toJson(),
+      );
+    } catch (e, s) {
+      Logs().w('Failed to dismiss SecurityIncident $id', e, s);
+    }
+  }
+
+  @override
+  Future<void> deleteSecurityIncident(String id) =>
+      _securityIncidentsBox.delete(id);
+
+  @override
+  Future<void> deleteOldSecurityIncidents({
+    Duration olderThan = const Duration(days: 90),
+  }) async {
+    final cutoff = DateTime.now().subtract(olderThan).millisecondsSinceEpoch;
+    final raw = await _securityIncidentsBox.getAllValues();
+    final toDelete = <String>[];
+    for (final entry in raw.entries) {
+      final timeMs = entry.value['time_ms'];
+      if (timeMs is int && timeMs < cutoff) {
+        toDelete.add(entry.key);
+      }
+    }
+    for (final id in toDelete) {
+      await _securityIncidentsBox.delete(id);
+    }
+  }
+
+  @override
   Future<String> exportDump() async {
     final dataMap = {
       _clientBoxName: await _clientBox.getAllValues(),
@@ -1783,6 +1858,7 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
       _eventsBoxName: await _eventsBox.getAllValues(),
       _seenDeviceIdsBoxName: await _seenDeviceIdsBox.getAllValues(),
       _seenDeviceKeysBoxName: await _seenDeviceKeysBox.getAllValues(),
+      _securityIncidentsBoxName: await _securityIncidentsBox.getAllValues(),
     };
     final json = jsonEncode(dataMap);
     await clear();
@@ -1878,6 +1954,14 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
       }
       for (final key in json[_seenDeviceKeysBoxName]!.keys) {
         await _seenDeviceKeysBox.put(key, json[_seenDeviceKeysBoxName]![key]);
+      }
+      
+      // optional in older dumps
+      final securityIncidents = json[_securityIncidentsBoxName];
+      if (securityIncidents != null) {
+        for (final key in securityIncidents.keys) {
+          await _securityIncidentsBox.put(key, securityIncidents[key]);
+        }
       }
       return true;
     } catch (e, s) {
