@@ -24,7 +24,6 @@ import 'dart:typed_data';
 
 import 'package:collection/collection.dart' show IterableExtension;
 import 'package:http/http.dart' as http;
-import 'package:matrix/src/room_timeline.dart';
 import 'package:meta/meta.dart';
 import 'package:mime/mime.dart';
 import 'package:random_string/random_string.dart';
@@ -1800,8 +1799,38 @@ class Client extends MatrixApi {
   final CachedStreamController<SdkError> onEncryptionError =
       CachedStreamController();
 
+  /// Stream of [SecurityIncident]s. They are stored via
+  /// [DatabaseApi.storeSecurityIncident] before being delivered to listeners
   final CachedStreamController<SecurityIncident> onSecurityIncident =
       CachedStreamController();
+
+  /// RNG for [_newIncidentId]
+  final Random _securityIncidentRng = Random.secure();
+
+  /// short, url-safe incident id
+  String _newIncidentId() {
+    final ts = DateTime.now().microsecondsSinceEpoch.toRadixString(16);
+    final rnd = List<int>.generate(8, (_) => _securityIncidentRng.nextInt(256))
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join();
+    return '$ts-$rnd';
+  }
+
+  /// Persists an incident, then fanouts to subscribers of
+  /// [onSecurityIncident]. Persistence failures are logged and do not
+  /// suppress the fanout, so the UI still gets a chance to warn the user.
+  Future<void> _emitIncident(SecurityIncident incident) async {
+    try {
+      await database.storeSecurityIncident(incident);
+    } catch (e, s) {
+      Logs().e(
+        '[Security] Failed to persist incident ${incident.id}',
+        e,
+        s,
+      );
+    }
+    onSecurityIncident.add(incident);
+  }
 
   /// When a new sync response is coming in, this gives the complete payload.
   final CachedStreamController<SyncUpdate> onSync = CachedStreamController();
@@ -3390,18 +3419,27 @@ class Client extends MatrixApi {
                     Logs().w(
                       'Already seen Device ID has been added again. This might be an attack!',
                     );
-                    onSecurityIncident.add(
+                    String? priorCurve;
+                    String? priorEd;
+                    if (oldPublicKeys.length > curve25519Key.length) {
+                      priorCurve =
+                          oldPublicKeys.substring(0, curve25519Key.length);
+                      priorEd = oldPublicKeys.substring(curve25519Key.length);
+                    }
+                    await _emitIncident(
                       SecurityIncident(
-                        id: generateUniqueTransactionId(),
-                        type: SecurityIncidentType.deviceKeyChanged,
+                        id: _newIncidentId(),
+                        type: SecurityIncidentType.deviceKeyReplay,
                         userId: userId,
+                        deviceId: deviceId,
                         oldFingerprints: {
-                          deviceId: oldPublicKeys,
+                          if (priorCurve != null) 'curve25519': priorCurve,
+                          if (priorEd != null) 'ed25519': priorEd,
                         },
                         newFingerprints: {
-                          deviceId: '$curve25519Key$ed25519Key',
+                          'curve25519': curve25519Key,
+                          'ed25519': ed25519Key,
                         },
-                        deviceId: deviceId,
                         time: DateTime.now(),
                       ),
                     );
@@ -3412,19 +3450,34 @@ class Client extends MatrixApi {
                     Logs().w(
                       'Already seen ED25519 has been added again. This might be an attack!',
                     );
-                    onSecurityIncident.add(
+                    final priorBundle =
+                        await database.deviceIdSeen(userId, oldDeviceId);
+                    String? priorCurve;
+                    String? priorEd;
+                    if (priorBundle != null &&
+                        priorBundle.endsWith(ed25519Key) &&
+                        priorBundle.length > ed25519Key.length) {
+                      priorCurve = priorBundle.substring(
+                        0,
+                        priorBundle.length - ed25519Key.length,
+                      );
+                      priorEd = ed25519Key;
+                    }
+                    await _emitIncident(
                       SecurityIncident(
-                        id: generateUniqueTransactionId(),
+                        id: _newIncidentId(),
                         type: SecurityIncidentType.deviceKeyReplay,
                         userId: userId,
+                        deviceId: deviceId,
+                        conflictingDeviceId: oldDeviceId,
                         oldFingerprints: {
-                          deviceId: oldPublicKeys,
+                          if (priorCurve != null) 'curve25519': priorCurve,
+                          if (priorEd != null) 'ed25519': priorEd,
                         },
                         newFingerprints: {
-                          deviceId: '$curve25519Key$ed25519Key',
+                          'curve25519': curve25519Key,
+                          'ed25519': ed25519Key,
                         },
-                        deviceId: oldDeviceId,
-                        conflictingDeviceId: deviceId,
                         time: DateTime.now(),
                       ),
                     );
@@ -3436,18 +3489,33 @@ class Client extends MatrixApi {
                     Logs().w(
                       'Already seen Curve25519 has been added again. This might be an attack!',
                     );
-                    onSecurityIncident.add(
+                    // Recover the prior owner's ed25519 by stripping the
+                    // known curve25519 prefix from the stored bundle
+                    final priorBundle =
+                        await database.deviceIdSeen(userId, oldDeviceId2);
+                    String? priorCurve;
+                    String? priorEd;
+                    if (priorBundle != null &&
+                        priorBundle.startsWith(curve25519Key) &&
+                        priorBundle.length > curve25519Key.length) {
+                      priorCurve = curve25519Key;
+                      priorEd = priorBundle.substring(curve25519Key.length);
+                    }
+                    await _emitIncident(
                       SecurityIncident(
-                        id: generateUniqueTransactionId(),
+                        id: _newIncidentId(),
                         type: SecurityIncidentType.deviceKeyReplay,
                         userId: userId,
+                        deviceId: deviceId,
+                        conflictingDeviceId: oldDeviceId2,
                         oldFingerprints: {
-                          deviceId: oldPublicKeys,
+                          if (priorCurve != null) 'curve25519': priorCurve,
+                          if (priorEd != null) 'ed25519': priorEd,
                         },
                         newFingerprints: {
-                          deviceId: '$curve25519Key$ed25519Key',
+                          'curve25519': curve25519Key,
+                          'ed25519': ed25519Key,
                         },
-                        deviceId: deviceId,
                         time: DateTime.now(),
                       ),
                     );
@@ -4417,8 +4485,7 @@ class SecurityIncident {
     Map<String, String?> decodeFingerprints(Object? raw) {
       if (raw is Map) {
         return raw.map(
-          (key, value) =>
-              MapEntry(key.toString(), value?.toString()),
+          (key, value) => MapEntry(key.toString(), value?.toString()),
         );
       }
       return <String, String?>{};
