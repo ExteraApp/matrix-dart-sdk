@@ -25,6 +25,7 @@ import 'dart:typed_data';
 import 'package:collection/collection.dart' show IterableExtension;
 import 'package:http/http.dart' as http;
 import 'package:matrix/src/room_timeline.dart';
+import 'package:meta/meta.dart';
 import 'package:mime/mime.dart';
 import 'package:random_string/random_string.dart';
 import 'package:vodozemac/vodozemac.dart' as vod;
@@ -1799,6 +1800,9 @@ class Client extends MatrixApi {
   final CachedStreamController<SdkError> onEncryptionError =
       CachedStreamController();
 
+  final CachedStreamController<SecurityIncident> onSecurityIncident =
+      CachedStreamController();
+
   /// When a new sync response is coming in, this gives the complete payload.
   final CachedStreamController<SyncUpdate> onSync = CachedStreamController();
 
@@ -2847,7 +2851,6 @@ class Client extends MatrixApi {
     final List<ReceiptEventContent> receipts = [];
 
     for (final event in events) {
-      
       room.setEphemeral(event);
 
       // Receipt events are deltas between two states. We will create a
@@ -3387,12 +3390,43 @@ class Client extends MatrixApi {
                     Logs().w(
                       'Already seen Device ID has been added again. This might be an attack!',
                     );
+                    onSecurityIncident.add(
+                      SecurityIncident(
+                        id: generateUniqueTransactionId(),
+                        type: SecurityIncidentType.deviceKeyChanged,
+                        userId: userId,
+                        oldFingerprints: {
+                          deviceId: oldPublicKeys,
+                        },
+                        newFingerprints: {
+                          deviceId: '$curve25519Key$ed25519Key',
+                        },
+                        deviceId: deviceId,
+                        time: DateTime.now(),
+                      ),
+                    );
                     continue;
                   }
                   final oldDeviceId = await database.publicKeySeen(ed25519Key);
                   if (oldDeviceId != null && oldDeviceId != deviceId) {
                     Logs().w(
                       'Already seen ED25519 has been added again. This might be an attack!',
+                    );
+                    onSecurityIncident.add(
+                      SecurityIncident(
+                        id: generateUniqueTransactionId(),
+                        type: SecurityIncidentType.deviceKeyReplay,
+                        userId: userId,
+                        oldFingerprints: {
+                          deviceId: oldPublicKeys,
+                        },
+                        newFingerprints: {
+                          deviceId: '$curve25519Key$ed25519Key',
+                        },
+                        deviceId: oldDeviceId,
+                        conflictingDeviceId: deviceId,
+                        time: DateTime.now(),
+                      ),
                     );
                     continue;
                   }
@@ -3401,6 +3435,21 @@ class Client extends MatrixApi {
                   if (oldDeviceId2 != null && oldDeviceId2 != deviceId) {
                     Logs().w(
                       'Already seen Curve25519 has been added again. This might be an attack!',
+                    );
+                    onSecurityIncident.add(
+                      SecurityIncident(
+                        id: generateUniqueTransactionId(),
+                        type: SecurityIncidentType.deviceKeyReplay,
+                        userId: userId,
+                        oldFingerprints: {
+                          deviceId: oldPublicKeys,
+                        },
+                        newFingerprints: {
+                          deviceId: '$curve25519Key$ed25519Key',
+                        },
+                        deviceId: deviceId,
+                        time: DateTime.now(),
+                      ),
                     );
                     continue;
                   }
@@ -4212,6 +4261,204 @@ class SyncStatusUpdate {
   final double? progress;
 
   const SyncStatusUpdate(this.status, {this.error, this.progress});
+}
+
+/// Classification of a [SecurityIncident] surfaced via
+/// [Client.onSecurityIncident].
+///
+/// Each value maps to a specific suspected attack vector or anomaly the SDK
+/// observed while updating device or cross-signing keys for a tracked user.
+enum SecurityIncidentType {
+  /// A device public key (curve25519 or ed25519) previously seen on disk for
+  /// one device id has now been claimed by a *different* device id, OR a
+  /// previously-seen device id has presented a different public-key bundle
+  /// without going through a known rotation flow. This is the textbook
+  /// signature of a homeserver-side key-substitution attempt.
+  deviceKeyReplay,
+
+  /// The same `(userId, deviceId)` pair has presented different ed25519 /
+  /// curve25519 public keys than what we previously stored. May indicate a
+  /// legitimate device re-registration, or a MITM. The SDK keeps the old
+  /// keys active until the application calls [Client.acceptDeviceKeyChange]
+  /// or [Client.rejectDeviceKeyChange].
+  deviceKeyChanged,
+
+  /// A user's cross-signing master public key has changed, or a same-publicKey
+  /// entry has been re-signed with a different ed25519 signature. This is the
+  /// canonical "identity reset" signal and may indicate that an attacker (or
+  /// the user themselves on another device) has reset the user's verifiable
+  /// identity. The SDK keeps the previously-known master key until the
+  /// application explicitly resolves the incident (no programmatic accept API
+  /// is provided in this release; resolution must go through the
+  /// cross-signing bootstrap flow).
+  masterKeyChanged,
+
+  /// An unverified device became eligible to receive megolm keys for an
+  /// encrypted room the user is currently participating in. Reserved for use
+  /// by higher tiers; not emitted by the device-key processing path.
+  unverifiedDeviceJoinedRoom,
+
+  /// A megolm session arrived from a sender device the SDK does not consider
+  /// verified or known. Reserved for use by the key-manager hardening tier;
+  /// not emitted by the device-key processing path.
+  megolmFromUnverifiedSender,
+}
+
+/// A persisted, user-actionable security event raised by the SDK when it
+/// detects an anomaly in incoming device or cross-signing key material.
+///
+/// Incidents are emitted on [Client.onSecurityIncident] and persisted via
+/// [DatabaseApi.storeSecurityIncident] so they survive process restarts and
+/// can be reviewed, dismissed, or acted upon by the application.
+///
+/// All fingerprint values are raw key material (base64 unpadded for ed25519
+/// and curve25519, base64 for cross-signing public keys) — the application
+/// is responsible for any presentation-layer formatting.
+@immutable
+class SecurityIncident {
+  final String id;
+  final SecurityIncidentType type;
+  final String userId;
+
+  /// The device id involved in the incident. Null for [masterKeyChanged]
+  /// (which is identity-scoped, not device-scoped).
+  final String? deviceId;
+
+  /// For [deviceKeyReplay] caused by a public-key collision across device
+  /// ids: the *previous, legitimate* device id that owned the colliding
+  /// public key. [deviceId] holds the *new, conflicting* device id.
+  final String? conflictingDeviceId;
+
+  /// Previously-known fingerprint(s), keyed by algorithm
+  /// (`'curve25519'`, `'ed25519'`, `'master'`, `'master_ed25519'`).
+  /// Empty / partially-empty when the SDK could not recover the prior
+  /// material.
+  final Map<String, String?> oldFingerprints;
+
+  /// Incoming fingerprint(s) that triggered the incident, keyed by algorithm
+  /// (`'curve25519'`, `'ed25519'`, `'master'`, `'master_ed25519'`).
+  final Map<String, String?> newFingerprints;
+
+  final String? roomId;
+
+  final DateTime time;
+
+  // dismissed incidents are still stored for audit
+  final bool dismissed;
+
+  /// Reserved for [megolmFromUnverifiedSender] / Tier-2 use. The
+  /// curve25519 sender key of the offending megolm session, when known.
+  final String? senderKey;
+
+  /// Reserved for [megolmFromUnverifiedSender] / Tier-2 use. The
+  /// `first_known_index` of the offending megolm session, when known.
+  final int? sessionFirstKnownIndex;
+
+  const SecurityIncident({
+    required this.id,
+    required this.type,
+    required this.userId,
+    this.deviceId,
+    this.conflictingDeviceId,
+    required this.oldFingerprints,
+    required this.newFingerprints,
+    this.roomId,
+    required this.time,
+    this.dismissed = false,
+    this.senderKey,
+    this.sessionFirstKnownIndex,
+  });
+
+  /// Returns a copy of this incident with [dismissed] replaced by the given
+  /// value. All other fields are preserved.
+  SecurityIncident copyWith({bool? dismissed}) => SecurityIncident(
+        id: id,
+        type: type,
+        userId: userId,
+        deviceId: deviceId,
+        conflictingDeviceId: conflictingDeviceId,
+        oldFingerprints: oldFingerprints,
+        newFingerprints: newFingerprints,
+        roomId: roomId,
+        time: time,
+        dismissed: dismissed ?? this.dismissed,
+        senderKey: senderKey,
+        sessionFirstKnownIndex: sessionFirstKnownIndex,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'type': type.name,
+        'user_id': userId,
+        'device_id': deviceId,
+        'conflicting_device_id': conflictingDeviceId,
+        'old_fingerprints': oldFingerprints,
+        'new_fingerprints': newFingerprints,
+        'room_id': roomId,
+        'time_ms': time.millisecondsSinceEpoch,
+        'dismissed': dismissed,
+        'sender_key': senderKey,
+        'session_first_known_index': sessionFirstKnownIndex,
+      };
+
+  /// Reconstructs an incident from a map previously produced by [toJson].
+  /// Unknown enum values fall back to [SecurityIncidentType.deviceKeyReplay]
+  /// so future SDKs that introduce new types do not crash older readers.
+  factory SecurityIncident.fromJson(Map<String, dynamic> j) {
+    SecurityIncidentType decodeType(Object? raw) {
+      if (raw is String) {
+        for (final v in SecurityIncidentType.values) {
+          if (v.name == raw) return v;
+        }
+      }
+      return SecurityIncidentType.deviceKeyReplay;
+    }
+
+    Map<String, String?> decodeFingerprints(Object? raw) {
+      if (raw is Map) {
+        return raw.map(
+          (key, value) =>
+              MapEntry(key.toString(), value?.toString()),
+        );
+      }
+      return <String, String?>{};
+    }
+
+    final dismissedRaw = j['dismissed'];
+    final bool dismissed;
+    if (dismissedRaw is bool) {
+      dismissed = dismissedRaw;
+    } else if (dismissedRaw is int) {
+      dismissed = dismissedRaw != 0;
+    } else {
+      dismissed = false;
+    }
+
+    return SecurityIncident(
+      id: j['id'] as String,
+      type: decodeType(j['type']),
+      userId: j['user_id'] as String,
+      deviceId: j['device_id'] as String?,
+      conflictingDeviceId: j['conflicting_device_id'] as String?,
+      oldFingerprints: decodeFingerprints(j['old_fingerprints']),
+      newFingerprints: decodeFingerprints(j['new_fingerprints']),
+      roomId: j['room_id'] as String?,
+      time: DateTime.fromMillisecondsSinceEpoch(j['time_ms'] as int),
+      dismissed: dismissed,
+      senderKey: j['sender_key'] as String?,
+      sessionFirstKnownIndex: j['session_first_known_index'] as int?,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) => other is SecurityIncident && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
+
+  @override
+  String toString() =>
+      'SecurityIncident(id=$id, type=$type, user=$userId, device=$deviceId, time=$time)';
 }
 
 enum SyncStatus {
