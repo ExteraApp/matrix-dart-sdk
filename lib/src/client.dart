@@ -1807,6 +1807,12 @@ class Client extends MatrixApi {
   /// RNG for [_newIncidentId]
   final Random _securityIncidentRng = Random.secure();
 
+  /// Device-key rotations the SDK has detected but not yet applied.
+  /// Outer key - userId, inner - deviceId, value is the proposed
+  /// replacement keys received from the homeserver. Resolved via
+  /// [acceptDeviceKeyChange] / [rejectDeviceKeyChange].
+  final Map<String, Map<String, DeviceKeys>> _pendingKeyReplacements = {};
+
   /// short, url-safe incident id
   String _newIncidentId() {
     final ts = DateTime.now().microsecondsSinceEpoch.toRadixString(16);
@@ -3559,10 +3565,37 @@ class Client extends MatrixApi {
                     ),
                   );
                 } else if (oldKeys.containsKey(deviceId)) {
-                  // This shouldn't ever happen. The same device ID has gotten
-                  // a new public key. So we ignore the update. TODO: ask krille
-                  // if we should instead use the new key with unknown verified / blocked status
-                  userKeys.deviceKeys[deviceId] = oldKeys[deviceId]!;
+                  // Same deviceId, but its ed25519 and/or curve25519 public
+                  // keys have changed since we last queried. This may be a
+                  // legitimate device re-registration (e.g. the user wiped
+                  // the device and signed in again) or a MITM attempt via a
+                  // compromised homeserver. Keep the previously-known keys
+                  // active and surface a SecurityIncident so the application
+                  // can prompt the user to accept or reject the rotation via
+                  // [acceptDeviceKeyChange] / [rejectDeviceKeyChange].
+                  final previous = oldKeys[deviceId]!;
+                  userKeys.deviceKeys[deviceId] = previous;
+                  _pendingKeyReplacements.putIfAbsent(
+                      userId, () => <String, DeviceKeys>{})[deviceId] = entry;
+                  final prevCurve = previous.curve25519Key;
+                  final prevEd = previous.ed25519Key;
+                  await _emitIncident(
+                    SecurityIncident(
+                      id: _newIncidentId(),
+                      type: SecurityIncidentType.deviceKeyChanged,
+                      userId: userId,
+                      deviceId: deviceId,
+                      oldFingerprints: {
+                        if (prevCurve != null) 'curve25519': prevCurve,
+                        if (prevEd != null) 'ed25519': prevEd,
+                      },
+                      newFingerprints: {
+                        'curve25519': curve25519Key,
+                        'ed25519': ed25519Key,
+                      },
+                      time: DateTime.now(),
+                    ),
+                  );
                 }
               } else {
                 Logs().w('Invalid device ${entry.userId}:${entry.deviceId}');
@@ -3600,6 +3633,14 @@ class Client extends MatrixApi {
                 _userDeviceKeys[userId] ??= DeviceKeysList(userId, this);
             final oldKeys =
                 Map<String, CrossSigningKey>.from(userKeys.crossSigningKeys);
+
+            // Snapshot the previous key of this same usage before we
+            // rebuild `crossSigningKeys`, so we can detect a publicKey
+            // rotation (master / self-signing / user-signing identity reset).
+            final previousOfSameUsage = oldKeys.values
+                .where((k) => k.usage.contains(keyType))
+                .firstOrNull;
+
             userKeys.crossSigningKeys = {};
             // add the types we aren't handling atm back
             for (final oldEntry in oldKeys.entries) {
@@ -3629,11 +3670,63 @@ class Client extends MatrixApi {
                   entry.validSignatures = oldKey.validSignatures;
                 }
                 userKeys.crossSigningKeys[publicKey] = entry;
+
+                // Identity-reset detection: only emit when this is the
+                // master usage (the canonical user identity) AND the
+                // previously-known master public key for this user has been
+                // replaced by a different publicKey. Self-signing and
+                // user-signing key rotations are routine cross-signing
+                // re-bootstraps and would generate noise if alerted on.
+                if (keyType == 'master' &&
+                    previousOfSameUsage != null &&
+                    previousOfSameUsage.publicKey != null &&
+                    previousOfSameUsage.publicKey != publicKey) {
+                  await _emitIncident(
+                    SecurityIncident(
+                      id: _newIncidentId(),
+                      type: SecurityIncidentType.masterKeyChanged,
+                      userId: userId,
+                      oldFingerprints: {
+                        'master': previousOfSameUsage.publicKey,
+                        if (previousOfSameUsage.ed25519Key != null)
+                          'master_ed25519': previousOfSameUsage.ed25519Key,
+                      },
+                      newFingerprints: {
+                        'master': publicKey,
+                        if (entry.ed25519Key != null)
+                          'master_ed25519': entry.ed25519Key,
+                      },
+                      time: DateTime.now(),
+                    ),
+                  );
+                }
               } else {
-                // This shouldn't ever happen. The same device ID has gotten
-                // a new public key. So we ignore the update. TODO: ask krille
-                // if we should instead use the new key with unknown verified / blocked status
+                // Same publicKey, different ed25519 signature material.
+                // Keep the previously-trusted key and surface an incident
+                // so the application can prompt the user. Resolution for
+                // master-key incidents goes through the cross-signing
+                // bootstrap flow rather than a programmatic accept API.
                 userKeys.crossSigningKeys[publicKey] = oldKey;
+                if (keyType == 'master') {
+                  await _emitIncident(
+                    SecurityIncident(
+                      id: _newIncidentId(),
+                      type: SecurityIncidentType.masterKeyChanged,
+                      userId: userId,
+                      oldFingerprints: {
+                        'master': publicKey,
+                        if (oldKey.ed25519Key != null)
+                          'master_ed25519': oldKey.ed25519Key,
+                      },
+                      newFingerprints: {
+                        'master': publicKey,
+                        if (entry.ed25519Key != null)
+                          'master_ed25519': entry.ed25519Key,
+                      },
+                      time: DateTime.now(),
+                    ),
+                  );
+                }
               }
               dbActions.add(
                 () => database.storeUserCrossSigningKey(
@@ -3670,6 +3763,94 @@ class Client extends MatrixApi {
     } catch (e, s) {
       Logs().e('[Vodozemac] Unable to update user device keys', e, s);
     }
+  }
+
+  /// Accept a pending device-key rotation previously surfaced as a
+  /// [SecurityIncidentType.deviceKeyChanged] incident.
+  ///
+  /// The stored device keys for `(userId, deviceId)` are replaced with the
+  /// proposed new ones. Verification status is reset to unverified and any
+  /// block is cleared, since acceptance of a rotation does not transitively
+  /// imply trust — the application should prompt the user to verify the
+  /// rotated device via the standard key-verification flow before treating
+  /// it as trustworthy.
+  ///
+  /// Outbound group (megolm) sessions are not explicitly rotated here; the
+  /// next outbound message will naturally pick up the new device keys when
+  /// [encryptGroupMessagePayload] re-evaluates which devices should receive
+  /// the session, which is the SDK's existing rotation contract for any
+  /// change in the participant device set.
+  ///
+  /// It is a no-op (with a warning log) if no pending replacement exists
+  /// for the given pair.
+  Future<void> acceptDeviceKeyChange(String userId, String deviceId) async {
+    final pending = _pendingKeyReplacements[userId]?.remove(deviceId);
+    if (_pendingKeyReplacements[userId]?.isEmpty ?? false) {
+      _pendingKeyReplacements.remove(userId);
+    }
+    if (pending == null) {
+      Logs().w(
+        '[Security] acceptDeviceKeyChange: no pending rotation for $userId/$deviceId',
+      );
+      return;
+    }
+    final list = _userDeviceKeys[userId];
+    if (list == null) {
+      Logs().w(
+        '[Security] acceptDeviceKeyChange: no tracked device list for $userId',
+      );
+      return;
+    }
+
+    // A rotated device must not inherit the previous device's verification
+    // status; require fresh verification from the user.
+    pending.setDirectVerified(false);
+    pending.blocked = false;
+    list.deviceKeys[deviceId] = pending;
+
+    final curve = pending.curve25519Key;
+    final ed = pending.ed25519Key;
+
+    await database.storeUserDeviceKey(
+      userId,
+      deviceId,
+      jsonEncode(pending.toJson()),
+      pending.directVerified,
+      pending.blocked,
+      pending.lastActive.millisecondsSinceEpoch,
+    );
+    if (curve != null && ed != null) {
+      await database.addSeenDeviceId(userId, deviceId, curve + ed);
+      await database.addSeenPublicKey(ed, deviceId);
+      await database.addSeenPublicKey(curve, deviceId);
+    }
+  }
+
+  /// Reject a pending device-key rotation previously surfaced as a
+  /// [SecurityIncidentType.deviceKeyChanged] incident.
+  ///
+  /// The previously-known device keys are preserved and the device is
+  /// marked [DeviceKeys.blocked] so that no future megolm sessions are
+  /// shared with it, causing the SDK's existing rotation-on-block path to
+  /// invalidate any outbound group session this device was a recipient of.
+  ///
+  /// It is a no-op (with a warning log) if no pending replacement exists
+  /// for the given pair.
+  Future<void> rejectDeviceKeyChange(String userId, String deviceId) async {
+    final hadPending =
+        _pendingKeyReplacements[userId]?.remove(deviceId) != null;
+    if (_pendingKeyReplacements[userId]?.isEmpty ?? false) {
+      _pendingKeyReplacements.remove(userId);
+    }
+    if (!hadPending) {
+      Logs().w(
+        '[Security] rejectDeviceKeyChange: no pending rotation for $userId/$deviceId',
+      );
+      return;
+    }
+    final existing = _userDeviceKeys[userId]?.deviceKeys[deviceId];
+    if (existing == null) return;
+    await existing.setBlocked(true);
   }
 
   bool _toDeviceQueueNeedsProcessing = true;
