@@ -1838,7 +1838,7 @@ class Client extends MatrixApi {
     onSecurityIncident.add(incident);
   }
 
-  Future<void> emitSecurityIncident({
+  Future<void> raiseSecurityIncident({
     required SecurityIncidentType type,
     required String userId,
     required Map<String, String?> oldFingerprints,
