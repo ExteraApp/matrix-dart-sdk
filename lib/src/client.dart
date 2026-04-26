@@ -1838,6 +1838,36 @@ class Client extends MatrixApi {
     onSecurityIncident.add(incident);
   }
 
+  Future<void> emitSecurityIncident({
+    required SecurityIncidentType type,
+    required String userId,
+    required Map<String, String?> oldFingerprints,
+    required Map<String, String?> newFingerprints,
+    required DateTime time,
+    String? deviceId,
+    String? conflictingDeviceId,
+    String? roomId,
+    String? senderKey,
+    int? sessionFirstKnownIndex,
+  }) async {
+    final incident = SecurityIncident(
+      id: _newIncidentId(),
+      type: type,
+      userId: userId,
+      oldFingerprints: oldFingerprints,
+      newFingerprints: newFingerprints,
+      time: time,
+      conflictingDeviceId: conflictingDeviceId,
+      deviceId: deviceId,
+      dismissed: false,
+      roomId: roomId,
+      senderKey: senderKey,
+      sessionFirstKnownIndex: sessionFirstKnownIndex,
+    );
+
+    await _emitIncident(incident);
+  }
+
   /// When a new sync response is coming in, this gives the complete payload.
   final CachedStreamController<SyncUpdate> onSync = CachedStreamController();
 
