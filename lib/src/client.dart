@@ -3462,22 +3462,19 @@ class Client extends MatrixApi {
                           oldPublicKeys.substring(0, curve25519Key.length);
                       priorEd = oldPublicKeys.substring(curve25519Key.length);
                     }
-                    await _emitIncident(
-                      SecurityIncident(
-                        id: _newIncidentId(),
-                        type: SecurityIncidentType.deviceKeyReplay,
-                        userId: userId,
-                        deviceId: deviceId,
-                        oldFingerprints: {
-                          if (priorCurve != null) 'curve25519': priorCurve,
-                          if (priorEd != null) 'ed25519': priorEd,
-                        },
-                        newFingerprints: {
-                          'curve25519': curve25519Key,
-                          'ed25519': ed25519Key,
-                        },
-                        time: DateTime.now(),
-                      ),
+                    await raiseSecurityIncident(
+                      type: SecurityIncidentType.deviceKeyReplay,
+                      userId: userId,
+                      deviceId: deviceId,
+                      oldFingerprints: {
+                        if (priorCurve != null) 'curve25519': priorCurve,
+                        if (priorEd != null) 'ed25519': priorEd,
+                      },
+                      newFingerprints: {
+                        'curve25519': curve25519Key,
+                        'ed25519': ed25519Key,
+                      },
+                      time: DateTime.now(),
                     );
                     continue;
                   }
@@ -3499,23 +3496,20 @@ class Client extends MatrixApi {
                       );
                       priorEd = ed25519Key;
                     }
-                    await _emitIncident(
-                      SecurityIncident(
-                        id: _newIncidentId(),
-                        type: SecurityIncidentType.deviceKeyReplay,
-                        userId: userId,
-                        deviceId: deviceId,
-                        conflictingDeviceId: oldDeviceId,
-                        oldFingerprints: {
-                          if (priorCurve != null) 'curve25519': priorCurve,
-                          if (priorEd != null) 'ed25519': priorEd,
-                        },
-                        newFingerprints: {
-                          'curve25519': curve25519Key,
-                          'ed25519': ed25519Key,
-                        },
-                        time: DateTime.now(),
-                      ),
+                    await raiseSecurityIncident(
+                      type: SecurityIncidentType.deviceKeyReplay,
+                      userId: userId,
+                      deviceId: deviceId,
+                      conflictingDeviceId: oldDeviceId,
+                      oldFingerprints: {
+                        if (priorCurve != null) 'curve25519': priorCurve,
+                        if (priorEd != null) 'ed25519': priorEd,
+                      },
+                      newFingerprints: {
+                        'curve25519': curve25519Key,
+                        'ed25519': ed25519Key,
+                      },
+                      time: DateTime.now(),
                     );
                     continue;
                   }
@@ -3537,23 +3531,20 @@ class Client extends MatrixApi {
                       priorCurve = curve25519Key;
                       priorEd = priorBundle.substring(curve25519Key.length);
                     }
-                    await _emitIncident(
-                      SecurityIncident(
-                        id: _newIncidentId(),
-                        type: SecurityIncidentType.deviceKeyReplay,
-                        userId: userId,
-                        deviceId: deviceId,
-                        conflictingDeviceId: oldDeviceId2,
-                        oldFingerprints: {
-                          if (priorCurve != null) 'curve25519': priorCurve,
-                          if (priorEd != null) 'ed25519': priorEd,
-                        },
-                        newFingerprints: {
-                          'curve25519': curve25519Key,
-                          'ed25519': ed25519Key,
-                        },
-                        time: DateTime.now(),
-                      ),
+                    await raiseSecurityIncident(
+                      type: SecurityIncidentType.deviceKeyReplay,
+                      userId: userId,
+                      deviceId: deviceId,
+                      conflictingDeviceId: oldDeviceId2,
+                      oldFingerprints: {
+                        if (priorCurve != null) 'curve25519': priorCurve,
+                        if (priorEd != null) 'ed25519': priorEd,
+                      },
+                      newFingerprints: {
+                        'curve25519': curve25519Key,
+                        'ed25519': ed25519Key,
+                      },
+                      time: DateTime.now(),
                     );
                     continue;
                   }
@@ -3609,22 +3600,19 @@ class Client extends MatrixApi {
                       userId, () => <String, DeviceKeys>{})[deviceId] = entry;
                   final prevCurve = previous.curve25519Key;
                   final prevEd = previous.ed25519Key;
-                  await _emitIncident(
-                    SecurityIncident(
-                      id: _newIncidentId(),
-                      type: SecurityIncidentType.deviceKeyChanged,
-                      userId: userId,
-                      deviceId: deviceId,
-                      oldFingerprints: {
-                        if (prevCurve != null) 'curve25519': prevCurve,
-                        if (prevEd != null) 'ed25519': prevEd,
-                      },
-                      newFingerprints: {
-                        'curve25519': curve25519Key,
-                        'ed25519': ed25519Key,
-                      },
-                      time: DateTime.now(),
-                    ),
+                  await raiseSecurityIncident(
+                    type: SecurityIncidentType.deviceKeyChanged,
+                    userId: userId,
+                    deviceId: deviceId,
+                    oldFingerprints: {
+                      if (prevCurve != null) 'curve25519': prevCurve,
+                      if (prevEd != null) 'ed25519': prevEd,
+                    },
+                    newFingerprints: {
+                      'curve25519': curve25519Key,
+                      'ed25519': ed25519Key,
+                    },
+                    time: DateTime.now(),
                   );
                 }
               } else {
@@ -3711,23 +3699,20 @@ class Client extends MatrixApi {
                     previousOfSameUsage != null &&
                     previousOfSameUsage.publicKey != null &&
                     previousOfSameUsage.publicKey != publicKey) {
-                  await _emitIncident(
-                    SecurityIncident(
-                      id: _newIncidentId(),
-                      type: SecurityIncidentType.masterKeyChanged,
-                      userId: userId,
-                      oldFingerprints: {
-                        'master': previousOfSameUsage.publicKey,
-                        if (previousOfSameUsage.ed25519Key != null)
-                          'master_ed25519': previousOfSameUsage.ed25519Key,
-                      },
-                      newFingerprints: {
-                        'master': publicKey,
-                        if (entry.ed25519Key != null)
-                          'master_ed25519': entry.ed25519Key,
-                      },
-                      time: DateTime.now(),
-                    ),
+                  await raiseSecurityIncident(
+                    type: SecurityIncidentType.masterKeyChanged,
+                    userId: userId,
+                    oldFingerprints: {
+                      'master': previousOfSameUsage.publicKey,
+                      if (previousOfSameUsage.ed25519Key != null)
+                        'master_ed25519': previousOfSameUsage.ed25519Key,
+                    },
+                    newFingerprints: {
+                      'master': publicKey,
+                      if (entry.ed25519Key != null)
+                        'master_ed25519': entry.ed25519Key,
+                    },
+                    time: DateTime.now(),
                   );
                 }
               } else {

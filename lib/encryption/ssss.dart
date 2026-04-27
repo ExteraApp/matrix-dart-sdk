@@ -72,6 +72,23 @@ class SSSS {
     _cache.clear();
   }
 
+  Future<void> wipeKey({String? keyId}) async {
+    keyId ??= defaultKeyId;
+    if (keyId == null) return;
+
+    await client.setAccountData(
+      client.userID!,
+      EventTypes.secretStorageKey(keyId),
+      {},
+    );
+    await client.setAccountData(
+      client.userID!,
+      EventTypes.SecretStorageDefaultKey,
+      {},
+    );
+    await clearCache();
+  }
+
   static DerivedKeys deriveKeys(Uint8List key, String name) {
     final zerosalt = Uint8List(8);
     final prk = CryptoUtils.hmac(key: zerosalt, input: key);

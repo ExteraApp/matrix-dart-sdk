@@ -69,6 +69,19 @@ class CrossSigning {
             null;
   }
 
+  Future<void> wipe() async {
+    await client.accountDataLoading;
+    const crossSigningTypes = {
+      EventTypes.CrossSigningMasterKey,
+      EventTypes.CrossSigningSelfSigning,
+      EventTypes.CrossSigningUserSigning,
+    };
+    for (final type in crossSigningTypes) {
+      if (!client.accountData.containsKey(type)) continue;
+      await client.setAccountData(client.userID!, type, {});
+    }
+  }
+
   Future<void> selfSign({
     String? passphrase,
     String? recoveryKey,
