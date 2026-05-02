@@ -168,6 +168,7 @@ class RoomTimeline extends Timeline {
   /// Paginates through all results and deduplicates via [addAggregatedEvent].
   /// Skips if this relation has already been fetched. Concurrent calls for the
   /// same relation are coalesced into a single request.
+  @override
   Future<void> fetchAggregatedEvents(
     String eventId,
     String relType, {
@@ -292,7 +293,7 @@ class RoomTimeline extends Timeline {
         } else {
           events.insertAll(0, eventsFromStore);
           final startIndex = eventsFromStore.length;
-          final endIndex = 0;
+          const endIndex = 0;
           for (var i = startIndex; i > endIndex; i--) {
             onInsert?.call(i);
           }

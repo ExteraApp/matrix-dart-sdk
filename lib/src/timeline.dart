@@ -93,6 +93,12 @@ abstract class Timeline {
     bool Function(Event)? searchFunc,
   });
 
+  Future<void> fetchAggregatedEvents(
+    String eventId,
+    String relType, {
+    String? eventType,
+  });
+
   /// Cancel all subscriptions
   void cancelSubscriptions();
 }
