@@ -55,6 +55,7 @@ extension CommandsClientExtension on Client {
     String? threadRootEventId,
     String? threadLastEventId,
     StringBuffer? stdout,
+    Map<String, dynamic>? eventContent,
   }) async {
     final args = CommandArgs(
       inReplyTo: inReplyTo,
@@ -66,6 +67,7 @@ extension CommandsClientExtension on Client {
       txid: txid,
       threadRootEventId: threadRootEventId,
       threadLastEventId: threadLastEventId,
+      eventContent: eventContent,
     );
     if (!msg.startsWith('/')) {
       final sendCommand = commands['send'];
@@ -121,6 +123,7 @@ extension CommandsClientExtension on Client {
         txid: args.txid,
         threadRootEventId: args.threadRootEventId,
         threadLastEventId: args.threadLastEventId,
+        eventContent: args.eventContent,
       );
     });
     addCommand('me', (args, stdout) async {
@@ -494,6 +497,7 @@ class CommandArgs {
   String? threadRootEventId;
   String? threadLastEventId;
   bool? replyMention;
+  Map<String, dynamic>? eventContent;
 
   CommandArgs({
     required this.msg,
@@ -505,6 +509,7 @@ class CommandArgs {
     this.txid,
     this.threadRootEventId,
     this.threadLastEventId,
+    this.eventContent,
   });
 }
 

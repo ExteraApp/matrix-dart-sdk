@@ -817,6 +817,8 @@ class Room {
     bool addMentions = true,
     bool replyMention = false,
 
+    Map<String, dynamic>? eventContent,
+
     /// Displays an event in the timeline with the transaction ID as the event
     /// ID and a status of SENDING, SENT or ERROR until it gets replaced by
     /// the sync event. Using this can display a different sort order of events
@@ -834,10 +836,12 @@ class Room {
         threadRootEventId: threadRootEventId,
         threadLastEventId: threadLastEventId,
         stdout: commandStdout,
+        eventContent: eventContent,
       );
     }
     final event = <String, dynamic>{
       'msgtype': msgtype,
+      ...(eventContent ?? {}),
       'body': message,
     };
 
