@@ -40,7 +40,7 @@ class GroupCallSession {
   final CallBackend backend;
 
   /// something like normal calls or thirdroom
-  final String? application;
+  String? application;
 
   /// either room scoped or user scoped calls
   final String? scope;
@@ -132,7 +132,7 @@ class GroupCallSession {
       await backend.initLocalStream(this, stream: stream);
     }
 
-    bool shouldSendNotification = false;
+    var shouldSendNotification = false;
     if (!room.hasActiveGroupCall(voip)) {
       shouldSendNotification = true;
     }
@@ -195,13 +195,12 @@ class GroupCallSession {
       (m) =>
           m.callId == groupCallId &&
           m.deviceId == client.deviceID! &&
-          m.application == application &&
           m.scope == scope &&
           m.roomId == room.id,
     );
 
     // Store permanent reactions from the current member event if it exists
-    List<MatrixEvent> permanentReactions = [];
+    var permanentReactions = <MatrixEvent>[];
     final membershipExpired = currentMembership?.isExpired ?? false;
 
     if (currentMembership?.eventId != null && !membershipExpired) {
@@ -281,12 +280,11 @@ class GroupCallSession {
     final memsForCurrentGroupCall = mems.where((element) {
       return element.callId == groupCallId &&
           !element.isExpired &&
-          element.application == application &&
           element.scope == scope &&
           element.roomId == room.id; // sanity checks
     }).toList();
 
-    final Set<CallParticipant> newP = {};
+    final newP = <CallParticipant>{};
 
     for (final mem in memsForCurrentGroupCall) {
       final rp = CallParticipant(
@@ -314,7 +312,7 @@ class GroupCallSession {
           ..remove(localParticipant);
         if (nonLocalAnyJoined.isNotEmpty && state == GroupCallState.entered) {
           Logs().v(
-            'nonLocalAnyJoined: ${nonLocalAnyJoined.map((e) => e.id).toString()} roomId: ${room.id} groupCallId: $groupCallId',
+            'nonLocalAnyJoined: ${nonLocalAnyJoined.map((e) => e.id)} roomId: ${room.id} groupCallId: $groupCallId',
           );
           await backend.onNewParticipant(this, nonLocalAnyJoined.toList());
         }
@@ -355,7 +353,7 @@ class GroupCallSession {
           ..remove(localParticipant);
         if (nonLocalAnyLeft.isNotEmpty && state == GroupCallState.entered) {
           Logs().v(
-            'nonLocalAnyLeft: ${nonLocalAnyLeft.map((e) => e.id).toString()} roomId: ${room.id} groupCallId: $groupCallId',
+            'nonLocalAnyLeft: ${nonLocalAnyLeft.map((e) => e.id)} roomId: ${room.id} groupCallId: $groupCallId',
           );
           await backend.onLeftParticipant(this, nonLocalAnyLeft.toList());
         }
@@ -395,7 +393,6 @@ class GroupCallSession {
           m.callId == groupCallId &&
           m.deviceId == client.deviceID! &&
           m.roomId == room.id &&
-          m.application == application &&
           m.scope == scope,
     );
 
@@ -462,7 +459,6 @@ class GroupCallSession {
         .where(
           (m) =>
               m.callId == groupCallId &&
-              m.application == application &&
               m.scope == scope &&
               m.roomId == room.id,
         )

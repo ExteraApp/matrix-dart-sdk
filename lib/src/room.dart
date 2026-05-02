@@ -883,6 +883,7 @@ class Room {
         getEmotePacks: () => getImagePacksFlat(ImagePackUsage.emoticon),
         getMention: getMention,
         convertLinebreaks: client.convertLinebreaksInFormatting,
+        enableLatex: client.enableLatexMarkdown,
       );
       // if the decoded html is the same as the body, there is no need in sending a formatted message
       if (HtmlUnescape().convert(html.replaceAll(RegExp(r'<br />\n?'), '\n')) !=
@@ -999,9 +1000,6 @@ class Room {
     return sendEvent(event, txid: txid);
   }
 
-  final Map<String, MatrixFile> sendingFilePlaceholders = {};
-  final Map<String, MatrixImageFile> sendingFileThumbnails = {};
-
   /// Sends a [file] to this room after uploading it. Returns the mxc uri of
   /// the uploaded file. If [waitUntilSent] is true, the future will wait until
   /// the message event has received the server. Otherwise the future will only
@@ -1031,9 +1029,17 @@ class Room {
     bool displayPendingEvent = true,
   }) async {
     txid ??= client.generateUniqueTransactionId();
-    sendingFilePlaceholders[txid] = file;
+    await client.database.storeFile(
+      Uri(scheme: 'cache', host: 'file', path: txid),
+      file.bytes,
+      DateTime.now().millisecondsSinceEpoch,
+    );
     if (thumbnail != null) {
-      sendingFileThumbnails[txid] = thumbnail;
+      await client.database.storeFile(
+        Uri(scheme: 'cache', host: 'thumbnail', path: txid),
+        thumbnail.bytes,
+        DateTime.now().millisecondsSinceEpoch,
+      );
     }
 
     // Create a fake Event object as a placeholder for the uploading file:
@@ -1082,22 +1088,26 @@ class Room {
       syncUpdate.rooms!.join!.values.first.timeline!.events!.first
               .unsigned![fileSendingStatusKey] =
           FileSendingStatus.generatingThumbnail.name;
-      thumbnail ??= await file.generateThumbnail(
-        nativeImplementations: client.nativeImplementations,
-        customImageResizer: client.customImageResizer,
-      );
-      if (shrinkImageMaxDimension != null) {
-        file = await MatrixImageFile.shrink(
-          bytes: file.bytes,
-          name: file.name,
-          maxDimension: shrinkImageMaxDimension,
-          customImageResizer: client.customImageResizer,
+      try {
+        thumbnail ??= await file.generateThumbnail(
           nativeImplementations: client.nativeImplementations,
+          customImageResizer: client.customImageResizer,
         );
-      }
+        if (shrinkImageMaxDimension != null) {
+          file = await MatrixImageFile.shrink(
+            bytes: file.bytes,
+            name: file.name,
+            maxDimension: shrinkImageMaxDimension,
+            customImageResizer: client.customImageResizer,
+            nativeImplementations: client.nativeImplementations,
+          );
+        }
 
-      if (thumbnail != null && file.size < thumbnail.size) {
-        thumbnail = null; // in this case, the thumbnail is not usefull
+        if (thumbnail != null && file.size < thumbnail.size) {
+          thumbnail = null; // in this case, the thumbnail is not usefull
+        }
+      } catch (e, s) {
+        Logs().e('Unable to shrink image before sending!', e, s);
       }
     }
 
@@ -1228,8 +1238,14 @@ class Room {
       threadLastEventId: threadLastEventId,
       displayPendingEvent: displayPendingEvent,
     );
-    sendingFilePlaceholders.remove(txid);
-    sendingFileThumbnails.remove(txid);
+    await client.database.deleteFile(
+      Uri(scheme: 'cache', host: 'file', path: txid),
+    );
+    if (thumbnail != null) {
+      await client.database.deleteFile(
+        Uri(scheme: 'cache', host: 'thumbnail', path: txid),
+      );
+    }
     return eventId;
   }
 
@@ -1873,6 +1889,21 @@ class Room {
       }
     }
 
+    // Fetch poll responses for fragmented timelines after decryption so
+    // encrypted poll start events are visible as poll events.
+    if (eventContextId != null) {
+      await Future.wait(
+        chunk.events
+            .where((event) => event.type == PollEventContent.startType)
+            .map(
+              (event) => timeline.fetchAggregatedEvents(
+                event.eventId,
+                RelationshipTypes.reference,
+              ),
+            ),
+      );
+    }
+
     return timeline;
   }
 
@@ -2066,7 +2097,7 @@ class Room {
     // Is user already in cache?
 
     // If not in cache, try the database
-    User? foundUser = getState(EventTypes.RoomMember, mxID)?.asUser(this);
+    var foundUser = getState(EventTypes.RoomMember, mxID)?.asUser(this);
 
     // If the room is not postloaded, check the database
     if (partial && foundUser == null) {
@@ -2230,14 +2261,11 @@ class Room {
   /// level of 100, and all other users have a power level of 0.
   /// For room version 12 and above the room creator always has maximum
   /// power level.
-  int getPowerLevelByUserId(String userId) {
+  PowerLevel getPowerLevelByUserId(String userId) {
     // Room creator has maximum power level:
     if (creatorUserIds.contains(userId) &&
         !((int.tryParse(roomVersion ?? '') ?? 0) < 12)) {
-      // 2^53 - 1 from https://spec.matrix.org/v1.15/appendices/#canonical-json
-      const maxInteger = 9007199254740991;
-
-      return maxInteger;
+      return PowerLevel.owner;
     }
 
     final powerLevelMap = getState(EventTypes.RoomPowerLevels)?.content;
@@ -2248,15 +2276,17 @@ class Room {
     final defaultUserPowerLevel = powerLevelMap?.tryGet<int>('users_default');
 
     final fallbackPowerLevel =
-        getState(EventTypes.RoomCreate)?.senderId == userId ? 100 : 0;
+        getState(EventTypes.RoomCreate)?.senderId == userId
+            ? PowerLevel.defaultAdminLevel
+            : PowerLevel.defaultUserLevel;
 
-    return userSpecificPowerLevel ??
-        defaultUserPowerLevel ??
-        fallbackPowerLevel;
+    return PowerLevel(
+      userSpecificPowerLevel ?? defaultUserPowerLevel ?? fallbackPowerLevel,
+    );
   }
 
   /// Returns the user's own power level.
-  int get ownPowerLevel => getPowerLevelByUserId(client.userID!);
+  PowerLevel get ownPowerLevel => getPowerLevelByUserId(client.userID!);
 
   /// Returns the power levels from all users for this room or null if not given.
   @Deprecated('Use `getPowerLevelByUserId(String userId)` instead')
@@ -2289,8 +2319,8 @@ class Room {
   bool get canBan {
     if (membership != Membership.join) return false;
     return (getState(EventTypes.RoomPowerLevels)?.content.tryGet<int>('ban') ??
-            50) <=
-        ownPowerLevel;
+            PowerLevel.defaultModeratorLevel) <=
+        ownPowerLevel.level;
   }
 
   /// returns if user can change a particular state event by comparing `ownPowerLevel`
@@ -2306,14 +2336,14 @@ class Room {
   /// If there is no state_default in the m.room.power_levels event, the
   /// state_default is 50. If the room contains no m.room.power_levels event,
   /// the state_default is 0.
-  int powerForChangingStateEvent(String action) {
+  PowerLevel powerForChangingStateEvent(String action) {
     final powerLevelMap = getState(EventTypes.RoomPowerLevels)?.content;
-    if (powerLevelMap == null) return 0;
-    return powerLevelMap
-            .tryGetMap<String, Object?>('events')
-            ?.tryGet<int>(action) ??
-        powerLevelMap.tryGet<int>('state_default') ??
-        50;
+    if (powerLevelMap == null) return PowerLevel.user;
+    return PowerLevel(
+      powerLevelMap.tryGetMap<String, Object?>('events')?.tryGet<int>(action) ??
+          powerLevelMap.tryGet<int>('state_default') ??
+          PowerLevel.defaultModeratorLevel,
+    );
   }
 
   /// if returned value is not null `EventTypes.GroupCallMember` is present
@@ -2350,8 +2380,8 @@ class Room {
   }
 
   /// Takes in `[m.room.power_levels].content` and returns the default power level
-  int getDefaultPowerLevel(Map<String, dynamic> powerLevelMap) {
-    return powerLevelMap.tryGet('users_default') ?? 0;
+  PowerLevel getDefaultPowerLevel(Map<String, dynamic> powerLevelMap) {
+    return PowerLevel(powerLevelMap.tryGet('users_default') ?? 0);
   }
 
   /// The default level required to send message events. This checks if the
@@ -2371,39 +2401,43 @@ class Room {
   /// The level required to invite a user.
   bool get canInvite {
     if (membership != Membership.join) return false;
-    return (getState(EventTypes.RoomPowerLevels)
-                ?.content
-                .tryGet<int>('invite') ??
-            0) <=
+    return PowerLevel(
+          getState(EventTypes.RoomPowerLevels)?.content.tryGet<int>('invite') ??
+              PowerLevel.defaultUserLevel,
+        ) <=
         ownPowerLevel;
   }
 
   /// The level required to kick a user.
   bool get canKick {
     if (membership != Membership.join) return false;
-    return (getState(EventTypes.RoomPowerLevels)?.content.tryGet<int>('kick') ??
-            50) <=
+    return PowerLevel(
+          getState(EventTypes.RoomPowerLevels)?.content.tryGet<int>('kick') ??
+              PowerLevel.defaultModeratorLevel,
+        ) <=
         ownPowerLevel;
   }
 
   /// The level required to redact an event.
   bool get canRedact {
     if (membership != Membership.join) return false;
-    return (getState(EventTypes.RoomPowerLevels)
-                ?.content
-                .tryGet<int>('redact') ??
-            50) <=
+    return PowerLevel(
+          getState(EventTypes.RoomPowerLevels)?.content.tryGet<int>('redact') ??
+              PowerLevel.defaultModeratorLevel,
+        ) <=
         ownPowerLevel;
   }
 
   ///  	The default level required to send state events. Can be overridden by the events key.
   bool get canSendDefaultStates {
     final powerLevelsMap = getState(EventTypes.RoomPowerLevels)?.content;
-    if (powerLevelsMap == null) return 0 <= ownPowerLevel;
-    return (getState(EventTypes.RoomPowerLevels)
-                ?.content
-                .tryGet<int>('state_default') ??
-            50) <=
+    if (powerLevelsMap == null) return PowerLevel.user <= ownPowerLevel;
+    return PowerLevel(
+          getState(EventTypes.RoomPowerLevels)
+                  ?.content
+                  .tryGet<int>('state_default') ??
+              PowerLevel.defaultModeratorLevel,
+        ) <=
         ownPowerLevel;
   }
 
@@ -2416,11 +2450,13 @@ class Room {
     if (membership != Membership.join) return false;
     final powerLevelsMap = getState(EventTypes.RoomPowerLevels)?.content;
 
-    final pl = powerLevelsMap
-            ?.tryGetMap<String, Object?>('events')
-            ?.tryGet<int>(eventType) ??
-        powerLevelsMap?.tryGet<int>('events_default') ??
-        0;
+    final pl = PowerLevel(
+      powerLevelsMap
+              ?.tryGetMap<String, Object?>('events')
+              ?.tryGet<int>(eventType) ??
+          powerLevelsMap?.tryGet<int>('events_default') ??
+          0,
+    );
 
     return ownPowerLevel >= pl;
   }
@@ -2428,11 +2464,13 @@ class Room {
   /// The power level requirements for specific notification types.
   bool canSendNotification(String userid, {String notificationType = 'room'}) {
     final userLevel = getPowerLevelByUserId(userid);
-    final notificationLevel = getState(EventTypes.RoomPowerLevels)
-            ?.content
-            .tryGetMap<String, Object?>('notifications')
-            ?.tryGet<int>(notificationType) ??
-        50;
+    final notificationLevel = PowerLevel(
+      getState(EventTypes.RoomPowerLevels)
+              ?.content
+              .tryGetMap<String, Object?>('notifications')
+              ?.tryGet<int>(notificationType) ??
+          PowerLevel.defaultModeratorLevel,
+    );
 
     return userLevel >= notificationLevel;
   }
@@ -2745,7 +2783,7 @@ class Room {
   List<SpaceParent> get spaceParents =>
       states[EventTypes.SpaceParent]
           ?.values
-          .map((state) => SpaceParent.fromState(state))
+          .map(SpaceParent.fromState)
           .where((child) => child.via.isNotEmpty)
           .toList() ??
       [];
@@ -2758,7 +2796,7 @@ class Room {
       ? throw Exception('Room is not a space!')
       : (states[EventTypes.SpaceChild]
               ?.values
-              .map((state) => SpaceChild.fromState(state))
+              .map(SpaceChild.fromState)
               .where((child) => child.via.isNotEmpty)
               .toList() ??
           [])
@@ -2795,12 +2833,12 @@ class Room {
         matrixUri(canonicalAlias),
       );
     }
-    final List queryParameters = [];
+    final queryParameters = [];
     final users = await requestParticipants([Membership.join]);
     final currentPowerLevelsMap = getState(EventTypes.RoomPowerLevels)?.content;
 
     final temp = List<User>.from(users);
-    temp.removeWhere((user) => user.powerLevel < 50);
+    temp.removeWhere((user) => user.powerLevel < PowerLevel.moderator);
     if (currentPowerLevelsMap != null) {
       // just for weird rooms
       temp.removeWhere(
@@ -2809,16 +2847,16 @@ class Room {
     }
 
     if (temp.isNotEmpty) {
-      temp.sort((a, b) => a.powerLevel.compareTo(b.powerLevel));
+      temp.sort((a, b) => a.powerLevel.level.compareTo(b.powerLevel.level));
       if (temp.last.id.domain != null) {
-        queryParameters.add(temp.last.id.domain!);
+        queryParameters.add(temp.last.id.domain);
       }
     }
 
-    final Map<String, int> servers = {};
+    final servers = <String, int>{};
     for (final user in users) {
       if (user.id.domain != null) {
-        if (servers.containsKey(user.id.domain!)) {
+        if (servers.containsKey(user.id.domain)) {
           servers[user.id.domain!] = servers[user.id.domain!]! + 1;
         } else {
           servers[user.id.domain!] = 1;

@@ -115,6 +115,8 @@ class Client extends MatrixApi {
 
   final bool convertLinebreaksInFormatting;
 
+  final bool enableLatexMarkdown;
+
   final Duration sendTimelineEventTimeout;
 
   /// The timeout until a typing indicator gets removed automatically.
@@ -123,6 +125,10 @@ class Client extends MatrixApi {
   Future<MatrixImageFileResizedResponse?> Function(
     MatrixImageFileResizeArguments,
   )? customImageResizer;
+
+  /// The compare function how the rooms should be sorted internally.
+  /// The [defaultRoomSorter] is used if no custom room sorter is provided.
+  RoomSorter? _customRoomSorter;
 
   /// Create a client
   /// [clientName] = unique identifier of this client
@@ -211,7 +217,9 @@ class Client extends MatrixApi {
     /// When sending a formatted message, converting linebreaks in markdown to
     /// <br/> tags:
     this.convertLinebreaksInFormatting = true,
+    this.enableLatexMarkdown = true,
     this.dehydratedDeviceDisplayName = 'Dehydrated Device',
+    RoomSorter? customRoomSorter,
   })  : _database = database,
         syncFilter = syncFilter ??
             Filter(
@@ -224,6 +232,7 @@ class Client extends MatrixApi {
         supportedLoginTypes =
             supportedLoginTypes ?? {AuthenticationTypes.password},
         verificationMethods = verificationMethods ?? <KeyVerificationMethod>{},
+        _customRoomSorter = customRoomSorter,
         super(
           httpClient: FixedTimeoutHttpClient(
             httpClient ?? http.Client(),
@@ -560,10 +569,9 @@ class Client extends MatrixApi {
 
       // Check if server supports at least one supported version
       final versions = await getVersions();
-      if (!versions.versions
-          .any((version) => supportedVersions.contains(version))) {
+      if (!versions.versions.any(supportedVersions.contains)) {
         Logs().w(
-          'Server supports the versions: ${versions.toString()} but this application is only compatible with ${supportedVersions.toString()}.',
+          'Server supports the versions: $versions but this application is only compatible with $supportedVersions.',
         );
         assert(false);
       }
@@ -1284,7 +1292,7 @@ class Client extends MatrixApi {
       room: archivedRoom,
       chunk: TimelineChunk(
         events: roomUpdate.timeline?.events?.reversed
-                .toList() // we display the event in the other sence
+                .toList() // we display the event in the other seence
                 .map((e) => Event.fromMatrixEvent(e, archivedRoom))
                 .toList() ??
             [],
@@ -1307,7 +1315,7 @@ class Client extends MatrixApi {
     if (timelineEvents != null) {
       await _handleRoomEvents(
         archivedRoom,
-        timelineEvents.reversed.toList(),
+        timelineEvents.toList(),
         EventUpdateType.timeline,
         store: false,
       );
@@ -2319,7 +2327,7 @@ class Client extends MatrixApi {
       _initLock = false;
       onLoginStateChanged.add(LoginState.loggedIn);
       Logs().i(
-        'Successfully connected as ${userID.localpart} with ${homeserver.toString()}',
+        'Successfully connected as ${userID.localpart} with $homeserver',
       );
 
       /// Timeout of 0, so that we don't see a spinner for 30 seconds.
@@ -2451,7 +2459,8 @@ class Client extends MatrixApi {
         onLoginStateChanged.add(LoginState.loggedIn);
       } catch (e, s) {
         Logs().w('Unable to refresh session after soft logout', e, s);
-        await logout();
+        // cannot logout without a token, so we just clear our database
+        await clear();
         rethrow;
       }
     }();
@@ -2501,7 +2510,7 @@ class Client extends MatrixApi {
         since: prevBatch,
         timeout: timeout?.inMilliseconds,
         setPresence: syncPresence,
-      ).then((v) => Future<SyncUpdate?>.value(v)).catchError((e) {
+      ).then(Future<SyncUpdate?>.value).catchError((e) {
         if (e is MatrixException) {
           syncError = e;
         } else {
@@ -2694,8 +2703,8 @@ class Client extends MatrixApi {
   }
 
   Future<void> _handleToDeviceEvents(List<BasicEventWithSender> events) async {
-    final Map<String, List<String>> roomsWithNewKeyToSessionId = {};
-    final List<ToDeviceEvent> callToDeviceEvents = [];
+    final roomsWithNewKeyToSessionId = <String, List<String>>{};
+    final callToDeviceEvents = <ToDeviceEvent>[];
     for (final event in events) {
       var toDeviceEvent = ToDeviceEvent.fromJson(event.toJson());
       Logs().v('Got to_device event ${toDeviceEvent.toJson()} ');
@@ -2913,7 +2922,7 @@ class Client extends MatrixApi {
   }
 
   Future<void> _handleEphemerals(Room room, List<BasicEvent> events) async {
-    final List<ReceiptEventContent> receipts = [];
+    final receipts = <ReceiptEventContent>[];
 
     for (final event in events) {
       room.setEphemeral(event);
@@ -3262,6 +3271,8 @@ class Client extends MatrixApi {
         // Is this event of an important type for the last event?
         if (!roomPreviewLastEvents.contains(event.type)) break;
 
+        if (_shouldKeepCallRejectLastEvent(event, room.lastEvent)) break;
+
         // Event is a valid new lastEvent:
         room.lastEvent = event;
 
@@ -3274,6 +3285,41 @@ class Client extends MatrixApi {
     room.onUpdate.add(room.id);
   }
 
+  // Rejecting a MatrixRTC/P2P call produces two timeline events in order:
+  // 1. m.call.reject from the callee, which is the user-visible call outcome.
+  // 2. com.famedly.call.member from the caller with memberships: [], because the
+  //    caller still needs to leave the call it had already joined.
+  // Keep showing the reject event in the room list. Otherwise the later cleanup
+  // event would replace it and the preview would say "call ended" instead of
+  // "call rejected".
+  bool _shouldKeepCallRejectLastEvent(Event event, Event? lastEvent) {
+    if (lastEvent?.type != EventTypes.CallReject ||
+        event.type != EventTypes.GroupCallMember) {
+      return false;
+    }
+
+    final memberships = event.content.tryGetList<dynamic>('memberships');
+    if (memberships == null || memberships.isNotEmpty) return false;
+
+    final previousMemberships = event.prevContent
+        ?.tryGetList<dynamic>('memberships')
+        ?.whereType<Map>()
+        .map(Map<String, Object?>.from)
+        .toList();
+    if (previousMemberships == null || previousMemberships.isEmpty) {
+      return false;
+    }
+
+    final rejectCallId = lastEvent!.content.tryGet<String>('call_id');
+    final rejectApplication = lastEvent.content.tryGet<String>('application');
+    return previousMemberships.any((membership) {
+      final membershipCallId = membership.tryGet<String>('call_id');
+      final membershipApplication = membership.tryGet<String>('application');
+      return membershipCallId == rejectCallId &&
+          membershipApplication == rejectApplication;
+    });
+  }
+
   bool _sortLock = false;
 
   /// If `true` then unread rooms are pinned at the top of the room list.
@@ -3282,10 +3328,10 @@ class Client extends MatrixApi {
   /// If `true` then unread rooms are pinned at the top of the room list.
   bool pinInvitedRooms;
 
-  /// The compare function how the rooms should be sorted internally. By default
-  /// rooms are sorted by timestamp of the last m.room.message event or the last
+  /// Default sorting method for rooms to be sorted internally.
+  /// Rooms are sorted by timestamp of the last m.room.message event or the last
   /// event if there is no known message.
-  RoomSorter get sortRoomsBy => (a, b) {
+  RoomSorter get defaultRoomSorter => (a, b) {
         if (pinInvitedRooms &&
             a.membership != b.membership &&
             [a.membership, b.membership].any((m) => m == Membership.invite)) {
@@ -3303,10 +3349,17 @@ class Client extends MatrixApi {
         }
       };
 
+  /// Set a room sorter and sort the rooms once immediately.
+  /// If `null` is passed, the default room sorter will be used.
+  void setCustomRoomSorter(RoomSorter? sorter) {
+    _customRoomSorter = sorter;
+    _sortRooms();
+  }
+
   void _sortRooms() {
     if (_sortLock || rooms.length < 2) return;
     _sortLock = true;
-    rooms.sort(sortRoomsBy);
+    rooms.sort(_customRoomSorter ?? defaultRoomSorter);
     _sortLock = false;
   }
 
@@ -4074,10 +4127,9 @@ class Client extends MatrixApi {
   /// Whether all push notifications are muted using the [.m.rule.master]
   /// rule of the push rules: https://matrix.org/docs/spec/client_server/r0.6.0#m-rule-master
   bool get allPushNotificationsMuted {
-    final Map<String, Object?>? globalPushRules =
-        _accountData[EventTypes.PushRules]
-            ?.content
-            .tryGetMap<String, Object?>('global');
+    final globalPushRules = _accountData[EventTypes.PushRules]
+        ?.content
+        .tryGetMap<String, Object?>('global');
     if (globalPushRules == null) return false;
 
     final globalPushRulesOverride = globalPushRules.tryGetList('override');
@@ -4367,7 +4419,7 @@ class Client extends MatrixApi {
       for (final identityKey in olmSessions.keys) {
         final sessions = olmSessions[identityKey]!;
         for (final sessionId in sessions.keys) {
-          final session = sessions[sessionId]!;
+          final session = sessions[sessionId];
           await database.storeOlmSession(
             identityKey,
             session['session_id'] as String,
@@ -4739,7 +4791,7 @@ class BadServerLoginTypesException implements Exception {
 
   @override
   String toString() =>
-      'Server supports the Login Types: ${serverLoginTypes.toString()} but this application is only compatible with ${supportedLoginTypes.toString()}.';
+      'Server supports the Login Types: $serverLoginTypes but this application is only compatible with $supportedLoginTypes.';
 }
 
 class FileTooBigMatrixException extends MatrixException {

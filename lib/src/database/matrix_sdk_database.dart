@@ -815,7 +815,7 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
       copiedRaw['content'] = jsonDecode(copiedRaw['content'] as String);
       return copiedRaw;
     }).toList();
-    return copiedRaws.map((raw) => QueuedToDeviceEvent.fromJson(raw)).toList();
+    return copiedRaws.map(QueuedToDeviceEvent.fromJson).toList();
   }
 
   @override
@@ -1493,12 +1493,9 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
                 id: roomId,
                 membership: membership,
                 highlightCount:
-                    roomUpdate.unreadNotifications?.highlightCount?.toInt() ??
-                        0,
-                notificationCount: roomUpdate
-                        .unreadNotifications?.notificationCount
-                        ?.toInt() ??
-                    0,
+                    roomUpdate.unreadNotifications?.highlightCount ?? 0,
+                notificationCount:
+                    roomUpdate.unreadNotifications?.notificationCount ?? 0,
                 prev_batch: roomUpdate.timeline?.prevBatch,
                 summary: roomUpdate.summary,
                 lastEvent: lastEvent,
@@ -1518,11 +1515,10 @@ class MatrixSdkDatabase extends DatabaseApi with DatabaseFileStorage {
           client: client,
           id: roomId,
           membership: membership,
-          highlightCount:
-              roomUpdate.unreadNotifications?.highlightCount?.toInt() ??
-                  currentRoom.highlightCount,
+          highlightCount: roomUpdate.unreadNotifications?.highlightCount ??
+              currentRoom.highlightCount,
           notificationCount:
-              roomUpdate.unreadNotifications?.notificationCount?.toInt() ??
+              roomUpdate.unreadNotifications?.notificationCount ??
                   currentRoom.notificationCount,
           prev_batch: roomUpdate.timeline?.prevBatch ?? currentRoom.prev_batch,
           summary: RoomSummary.fromJson(

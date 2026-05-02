@@ -214,6 +214,7 @@ String markdown(
   Map<String, Map<String, String>> Function()? getEmotePacks,
   String? Function(String)? getMention,
   bool convertLinebreaks = true,
+  bool enableLatex = true,
 }) {
   var ret = markdownToHtml(
     text
@@ -222,7 +223,7 @@ String markdown(
         .replaceNewlines(),
     extensionSet: ExtensionSet.gitHubFlavored,
     blockSyntaxes: [
-      BlockLatexSyntax(),
+      if (enableLatex) BlockLatexSyntax(),
     ],
     inlineSyntaxes: [
       StrikethroughSyntax(),
@@ -230,7 +231,7 @@ String markdown(
       EmoteSyntax(getEmotePacks),
       PillSyntax(),
       MentionSyntax(getMention),
-      InlineLatexSyntax(),
+      if (enableLatex) InlineLatexSyntax(),
     ],
   );
 
