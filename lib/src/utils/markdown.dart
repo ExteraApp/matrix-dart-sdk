@@ -20,8 +20,6 @@ import 'dart:convert';
 
 import 'package:markdown/markdown.dart';
 
-import 'package:matrix/src/utils/matrix_id_string_extension.dart';
-
 const htmlAttrEscape = HtmlEscape(HtmlEscapeMode.attribute);
 
 class SpoilerSyntax extends DelimiterSyntax {
@@ -182,7 +180,7 @@ class PillSyntax extends InlineSyntax {
     final identifier = match[1]!;
     final element = Element.text('a', htmlEscape.convert(identifier));
     element.attributes['href'] =
-        htmlAttrEscape.convert(matrixUri(identifier));
+        htmlAttrEscape.convert('https://matrix.to/#/$identifier');
     parser.addNode(element);
     return true;
   }
@@ -203,7 +201,7 @@ class MentionSyntax extends InlineSyntax {
     }
     final element = Element.text('a', htmlEscape.convert(match[1]!));
     element.attributes['href'] =
-        htmlAttrEscape.convert(matrixUri(mention));
+        htmlAttrEscape.convert('https://matrix.to/#/$mention');
     parser.addNode(element);
     return true;
   }
@@ -218,8 +216,11 @@ String markdown(
 }) {
   var ret = markdownToHtml(
     text
-        // Escape HTML tags, but NOT inside inline/fenced code blocks:
-        .escapeHtmlTagsOutsideCode()
+        .replaceAllMapped(
+          // Replace HTML tags
+          RegExp(r'<([^>]*)>'),
+          (match) => '&lt;${match.group(1)}&gt;',
+        )
         .replaceNewlines(),
     extensionSet: ExtensionSet.gitHubFlavored,
     blockSyntaxes: [
@@ -278,161 +279,6 @@ String markdown(
 }
 
 extension on String {
-  String escapeHtmlTagsOutsideCode() {
-    final s = this;
-    final out = StringBuffer();
-
-    var i = 0;
-
-    bool inInlineCode = false;
-    String inlineDelim = '';
-
-    bool inFencedCode = false;
-    int fenceChar = 0; // '`' or '~' codeUnit
-    int fenceLen = 0; // length of opening fence run
-
-    bool isLineStart(int index) =>
-        index == 0 || s.codeUnitAt(index - 1) == 0x0A; // '\n'
-
-    bool isEscapedBacktick(int index) {
-      // Treat ` as escaped if preceded by an odd number of backslashes.
-      var bs = 0;
-      var j = index - 1;
-      while (j >= 0 && s.codeUnitAt(j) == 0x5C) {
-        // '\'
-        bs++;
-        j--;
-      }
-      return bs.isOdd;
-    }
-
-    while (i < s.length) {
-      if (!inInlineCode && !inFencedCode) {
-        // Detect fenced code block start (``` or ~~~), up to 3 leading spaces.
-        if (isLineStart(i)) {
-          var j = i;
-          var spaces = 0;
-          while (j < s.length && spaces < 3 && s.codeUnitAt(j) == 0x20) {
-            j++;
-            spaces++;
-          }
-
-          if (j < s.length) {
-            final ch = s.codeUnitAt(j);
-            if (ch == 0x60 || ch == 0x7E) {
-              // '`' or '~'
-              var k = j;
-              while (k < s.length && s.codeUnitAt(k) == ch) {
-                k++;
-              }
-              final runLen = k - j;
-              if (runLen >= 3) {
-                inFencedCode = true;
-                fenceChar = ch;
-                fenceLen = runLen;
-
-                // Copy the whole opening fence line as-is
-                final lineEnd = s.indexOf('\n', k);
-                if (lineEnd == -1) {
-                  out.write(s.substring(i));
-                  break;
-                }
-                out.write(s.substring(i, lineEnd + 1));
-                i = lineEnd + 1;
-                continue;
-              }
-            }
-          }
-        }
-
-        // Detect inline code start (one or more backticks), not escaped.
-        if (s.codeUnitAt(i) == 0x60 && !isEscapedBacktick(i)) {
-          // '`'
-          var j = i;
-          while (j < s.length && s.codeUnitAt(j) == 0x60) {
-            j++;
-          }
-          inlineDelim = s.substring(i, j);
-          inInlineCode = true;
-          out.write(inlineDelim);
-          i = j;
-          continue;
-        }
-
-        // Escape <...> outside code (same behavior as your old RegExp).
-        if (s.codeUnitAt(i) == 0x3C) {
-          // '<'
-          final gt = s.indexOf('>', i + 1);
-          if (gt != -1) {
-            out.write('&lt;');
-            out.write(s.substring(i + 1, gt));
-            out.write('&gt;');
-            i = gt + 1;
-            continue;
-          }
-        }
-
-        out.writeCharCode(s.codeUnitAt(i));
-        i++;
-        continue;
-      }
-
-      if (inInlineCode) {
-        // Copy as-is until we see the exact same backtick run.
-        if (inlineDelim.isNotEmpty && s.startsWith(inlineDelim, i)) {
-          out.write(inlineDelim);
-          i += inlineDelim.length;
-          inInlineCode = false;
-          inlineDelim = '';
-        } else {
-          out.writeCharCode(s.codeUnitAt(i));
-          i++;
-        }
-        continue;
-      }
-
-      // inFencedCode
-      if (inFencedCode) {
-        // Detect closing fence on a line start (up to 3 leading spaces),
-        // with at least the opening fence length.
-        if (isLineStart(i)) {
-          var j = i;
-          var spaces = 0;
-          while (j < s.length && spaces < 3 && s.codeUnitAt(j) == 0x20) {
-            j++;
-            spaces++;
-          }
-
-          if (j < s.length && s.codeUnitAt(j) == fenceChar) {
-            var k = j;
-            while (k < s.length && s.codeUnitAt(k) == fenceChar) {
-              k++;
-            }
-            if (k - j >= fenceLen) {
-              final lineEnd = s.indexOf('\n', k);
-              if (lineEnd == -1) {
-                out.write(s.substring(i));
-                break;
-              }
-              out.write(s.substring(i, lineEnd + 1));
-              i = lineEnd + 1;
-
-              inFencedCode = false;
-              fenceChar = 0;
-              fenceLen = 0;
-              continue;
-            }
-          }
-        }
-
-        out.writeCharCode(s.codeUnitAt(i));
-        i++;
-      }
-    }
-
-    return out.toString();
-  }
-
   String replaceNewlines() {
     // RegEx for at least 3 following \n
     final regExp = RegExp(r'(\n{3,})');
