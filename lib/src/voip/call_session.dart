@@ -1,34 +1,19 @@
-/*
- *   Famedly Matrix SDK
- *   Copyright (C) 2021 Famedly GmbH
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU Affero General Public License as
- *   published by the Free Software Foundation, either version 3 of the
- *   License, or (at your option) any later version.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *   GNU Affero General Public License for more details.
- *
- *   You should have received a copy of the GNU Affero General Public License
- *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2019-Present, 2021 Famedly GmbH
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'dart:async';
 import 'dart:core';
 import 'dart:math';
 
 import 'package:collection/collection.dart';
-import 'package:webrtc_interface/webrtc_interface.dart';
-
 import 'package:matrix/matrix.dart';
 import 'package:matrix/src/utils/cached_stream_controller.dart';
 import 'package:matrix/src/voip/models/call_options.dart';
 import 'package:matrix/src/voip/models/voip_id.dart';
 import 'package:matrix/src/voip/utils/stream_helper.dart';
 import 'package:matrix/src/voip/utils/user_media_constraints.dart';
+import 'package:webrtc_interface/webrtc_interface.dart';
 
 /// Parses incoming matrix events to the apropriate webrtc layer underneath using
 /// a `WebRTCDelegate`. This class is also responsible for sending any outgoing

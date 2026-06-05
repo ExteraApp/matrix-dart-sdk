@@ -1,12 +1,16 @@
-import 'dart:async';
+// SPDX-FileCopyrightText: 2019-Present Famedly GmbH
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
-import 'package:test/test.dart';
-import 'package:webrtc_interface/webrtc_interface.dart';
+import 'dart:async';
 
 import 'package:matrix/matrix.dart';
 import 'package:matrix/src/voip/models/call_options.dart';
 import 'package:matrix/src/voip/models/delayed_event_canceller.dart';
 import 'package:matrix/src/voip/models/voip_id.dart';
+import 'package:test/test.dart';
+import 'package:webrtc_interface/webrtc_interface.dart';
+
 import 'fake_client.dart';
 import 'webrtc_stub.dart';
 
@@ -1113,7 +1117,7 @@ void main() {
           const callId = 'test_delayed_cleanup';
 
           // Simulate a delayed event canceller that was set up for this call
-          voip.delayedEventCancellers['$callId|m.call|m.room'] =
+          voip.delayedEventCancellers['${room.id}|$callId|m.room'] =
               DelayedEventCanceller(
             delayedEventId: 'fake_delayed_event_id',
             restartTimer: Timer.periodic(
@@ -1123,7 +1127,8 @@ void main() {
           );
 
           expect(
-            voip.delayedEventCancellers.containsKey('$callId|m.call|m.room'),
+            voip.delayedEventCancellers
+                .containsKey('${room.id}|$callId|m.room'),
             isTrue,
           );
 
@@ -1134,7 +1139,8 @@ void main() {
           await room.removeFamedlyCallMemberEvent(callId, voip);
 
           expect(
-            voip.delayedEventCancellers.containsKey('$callId|m.call|m.room'),
+            voip.delayedEventCancellers
+                .containsKey('${room.id}|$callId|m.room'),
             isFalse,
           );
         },

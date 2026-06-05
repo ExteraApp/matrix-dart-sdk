@@ -1,27 +1,13 @@
-/*
- *   Famedly Matrix SDK
- *   Copyright (C) 2019, 2020 Famedly GmbH
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU Affero General Public License as
- *   published by the Free Software Foundation, either version 3 of the
- *   License, or (at your option) any later version.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *   GNU Affero General Public License for more details.
- *
- *   You should have received a copy of the GNU Affero General Public License
- *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2019, 2020 Famedly GmbH
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'dart:convert';
 
+import 'package:matrix/matrix.dart';
 import 'package:test/test.dart';
 import 'package:vodozemac/vodozemac.dart' as vod;
 
-import 'package:matrix/matrix.dart';
 import './fake_client.dart';
 
 void main() async {
@@ -66,12 +52,17 @@ void main() async {
       };
 
       final key = DeviceKeys.fromJson(rawJson, client);
-      // NOTE(Nico): this actually doesn't do anything, because the device signature is invalid...
-      await key.setVerified(false, false);
-      await key.setBlocked(true);
+      // Signature is intentionally invalid in this fixture, so mutating
+      // verification/block state must fail on invalid keys.
+      expect(key.isValid, false);
+      await expectLater(
+        key.setVerified(false, false),
+        throwsA(isA<Exception>()),
+      );
+      await expectLater(key.setBlocked(true), throwsA(isA<Exception>()));
       expect(json.encode(key.toJson()), json.encode(rawJson));
       expect(key.directVerified, false);
-      expect(key.blocked, true);
+      expect(key.blocked, true); // invalid keys are considered blocked
 
       rawJson = <String, dynamic>{
         'user_id': '@test:fakeServer.notExisting',

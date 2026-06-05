@@ -1,20 +1,6 @@
-/*
- *   Famedly Matrix SDK
- *   Copyright (C) 2021 Famedly GmbH
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU Affero General License as
- *   published by the Free Software Foundation, either version 3 of the
- *   License, or (at your option) any later version.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *   GNU Affero General License for more details.
- *
- *   You should have received a copy of the GNU Affero General License
- *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2019-Present, 2021 Famedly GmbH
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'dart:async';
 import 'dart:core';
@@ -332,7 +318,7 @@ class GroupCallSession {
 
           // also clear delayed event state so that they can be started again
           final canceller =
-              voip.delayedEventCancellers['$groupCallId|$application|$scope'];
+              voip.delayedEventCancellers['${room.id}|$groupCallId|$scope'];
           if (canceller != null) {
             canceller.restartTimer.cancel();
 
@@ -340,7 +326,7 @@ class GroupCallSession {
             // the delayed event, the server already thinks it's cancelled
 
             voip.delayedEventCancellers
-                .remove('$groupCallId|$application|$scope');
+                .remove('${room.id}|$groupCallId|$scope');
           }
 
           // rejoin the call and share the key with the existing participants

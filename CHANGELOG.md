@@ -1,4 +1,33 @@
+<!--
+SPDX-FileCopyrightText: 2019-Present Famedly GmbH
+
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+## [7.2.2] 29th May 2026
+
+- fix: fail tests if they fail (#2348) (td)
+
+## [7.2.1] 28th May 2026
+
+- feat: update ssss to centralise key logic (Abrish Sabri)
+- fix: Account data not existing throws exception while function expects empty json object (Christian Kußowski)
+- fix: encryption loop iteration (Abrish Sabri)
+
+## [7.2.0] 26th May 2026
+
+- build: (deps): bump actions/checkout from 4 to 6 (dependabot[bot])
+- feat: add matrix content scanner support (Khalil)
+- fix: Actually throw error on failed download (Christian Kußowski)
+- fix: Workaround that synapse's initial sync account data may not be up to date (Christian Kußowski)
+
+## [7.1.1] 12th May 2026
+
+- fix: call delayed event canceller should not use application and actually remove it from local state on leave (td)
+- fix: Do not send dozens of key request to device messages on timeline export (krille-chan)
+- fix: Pass correct event to redaction localization (Christian Kußowski)
+
 ## [7.1.0] 29th April 2026
+
 - feat: custom rooms list sorter (Karthikeyan S)
 - feat: gate LaTeX markdown parsing behind enableLatexMarkdown flag (Khalil)
 - fix: clear database if onSoftLogout fails instead of logout (td)

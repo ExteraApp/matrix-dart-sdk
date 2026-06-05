@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2019-Present Famedly GmbH
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // ignore_for_file: avoid_print
 
 import 'dart:async';
@@ -5,10 +9,9 @@ import 'dart:collection';
 import 'dart:js_interop';
 import 'dart:typed_data';
 
-import 'package:web/web.dart';
-
 import 'package:matrix/matrix.dart' hide Event;
 import 'package:matrix/src/utils/web_worker/native_implementations_web_worker.dart';
+import 'package:web/web.dart';
 
 ///
 ///

@@ -1,12 +1,12 @@
+// SPDX-FileCopyrightText: 2019-Present Famedly GmbH
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:core';
 
 import 'package:collection/collection.dart';
-import 'package:meta/meta.dart';
-import 'package:sdp_transform/sdp_transform.dart' as sdp_transform;
-import 'package:webrtc_interface/webrtc_interface.dart';
-
 import 'package:matrix/matrix.dart';
 import 'package:matrix/src/utils/cached_stream_controller.dart';
 import 'package:matrix/src/utils/crypto/crypto.dart';
@@ -14,6 +14,9 @@ import 'package:matrix/src/voip/models/call_options.dart';
 import 'package:matrix/src/voip/models/delayed_event_canceller.dart';
 import 'package:matrix/src/voip/models/voip_id.dart';
 import 'package:matrix/src/voip/utils/stream_helper.dart';
+import 'package:meta/meta.dart';
+import 'package:sdp_transform/sdp_transform.dart' as sdp_transform;
+import 'package:webrtc_interface/webrtc_interface.dart';
 
 /// The parent highlevel voip class, this trnslates matrix events to webrtc methods via
 /// `CallSession` or `GroupCallSession` methods
@@ -41,7 +44,7 @@ class VoIP {
   final Map<VoipId, GroupCallSession> _groupCalls = {};
 
   // The delayed event id to cancel membership for that groupcall
-  // key is '$groupCallId|$application|$scope'
+  // key is '${room.id}|$groupCallId|$scope'
   @internal
   final delayedEventCancellers = <String, DelayedEventCanceller>{};
 

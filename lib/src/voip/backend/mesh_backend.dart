@@ -1,13 +1,16 @@
+// SPDX-FileCopyrightText: 2019-Present Famedly GmbH
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import 'dart:async';
 
 import 'package:collection/collection.dart';
-import 'package:webrtc_interface/webrtc_interface.dart';
-
 import 'package:matrix/matrix.dart';
 import 'package:matrix/src/utils/cached_stream_controller.dart';
 import 'package:matrix/src/voip/models/call_options.dart';
 import 'package:matrix/src/voip/utils/stream_helper.dart';
 import 'package:matrix/src/voip/utils/user_media_constraints.dart';
+import 'package:webrtc_interface/webrtc_interface.dart';
 
 class MeshBackend extends CallBackend {
   MeshBackend({

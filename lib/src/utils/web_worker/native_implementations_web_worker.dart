@@ -1,12 +1,15 @@
+// SPDX-FileCopyrightText: 2019-Present Famedly GmbH
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import 'dart:async';
 import 'dart:collection';
 import 'dart:js_interop';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:web/web.dart';
-
 import 'package:matrix/matrix.dart';
+import 'package:web/web.dart';
 
 // ignore: unused-code
 class NativeImplementationsWebWorker extends NativeImplementations {
@@ -111,6 +114,12 @@ class NativeImplementationsWebWorker extends NativeImplementations {
       Logs().e('Web worker computation error. Fallback to main thread', e, s);
       return NativeImplementations.dummy.shrinkImage(args);
     }
+  }
+
+  @override
+  FutureOr<bool> checkSecretStorageKey(CheckSecretStorageKeyArgs args) {
+    // Fallback: web worker only supports image computation in this SDK version.
+    return NativeImplementations.dummy.checkSecretStorageKey(args);
   }
 }
 

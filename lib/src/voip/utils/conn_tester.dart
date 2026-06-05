@@ -1,8 +1,11 @@
+// SPDX-FileCopyrightText: 2019-Present Famedly GmbH
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import 'dart:async';
 
-import 'package:webrtc_interface/webrtc_interface.dart';
-
 import 'package:matrix/matrix.dart';
+import 'package:webrtc_interface/webrtc_interface.dart';
 
 class ConnectionTester {
   Client client;
