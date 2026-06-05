@@ -96,11 +96,20 @@ class EmoteSyntax extends InlineSyntax {
   }
 }
 
-class InlineLatexSyntax extends DelimiterSyntax {
+class InlineLatexSyntax extends InlineSyntax {
   InlineLatexSyntax() : super(r'\$([^\s$]([^\$]*[^\s$])?)\$');
 
   @override
   bool onMatch(InlineParser parser, Match match) {
+    if (match.start > 0) {
+      final precedingText = match.input.substring(0, match.start);
+      final urlMatch = RegExp(r'(?:https?://)[^\s]*$').firstMatch(precedingText);
+      if (urlMatch != null) {
+        parser.addNode(Text(match[0]!));
+        return true;
+      }
+    }
+    
     final element =
         Element('span', [Element.text('code', htmlEscape.convert(match[1]!))]);
     element.attributes['data-mx-maths'] = htmlAttrEscape.convert(match[1]!);
