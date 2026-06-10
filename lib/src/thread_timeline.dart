@@ -4,10 +4,6 @@ import 'package:matrix/matrix.dart';
 import 'package:matrix/src/models/timeline_chunk.dart';
 import 'package:matrix/src/thread.dart';
 
-// ThreadTimeline: hey RoomTimeline can i copy your homework?
-// RoomTimeline: sure just don't make it too obvious
-// ThreadTimeline:
-
 class ThreadTimeline extends Timeline {
   final Thread thread;
 
