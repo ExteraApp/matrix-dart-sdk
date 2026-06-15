@@ -499,7 +499,11 @@ class ThreadTimeline extends Timeline {
 
   @override
   void cancelSubscriptions() {
-    // TODO: implement cancelSubscriptions
+    timelineSub?.cancel();
+    historySub?.cancel();
+    roomSub?.cancel();
+    sessionIdReceivedSub?.cancel();
+    cancelSendEventSub?.cancel();
   }
 
   @override
