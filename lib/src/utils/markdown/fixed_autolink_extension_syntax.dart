@@ -42,8 +42,6 @@ class AutolinkExtensionSyntaxFix extends InlineSyntax {
   static const _emailPattern =
       r'[-_.+a-z0-9]+@(?:[-_a-z0-9]+\.)+[-_a-z0-9]*[a-z0-9]';
 
-  static const _percentEncoded = r'%[a-f0-9]{2}';
-
   AutolinkExtensionSyntaxFix()
       : super('($_linkPattern)|($_emailPattern)', caseSensitive: false);
 
@@ -102,8 +100,11 @@ class AutolinkExtensionSyntaxFix extends InlineSyntax {
       destination = 'http://$destination';
     }
 
-    if (RegExp(_percentEncoded).hasMatch(destination)) {
-      destination = Uri.decodeFull(destination);
+    try {
+      final uri = Uri.parse(destination);
+      destination = uri.toString();
+    } catch (e) {
+      destination = Uri.encodeFull(destination);
     }
 
     final anchor = Element.text('a', text)
