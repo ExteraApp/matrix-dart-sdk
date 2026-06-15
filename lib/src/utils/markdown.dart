@@ -90,7 +90,7 @@ class EmoteSyntax extends InlineSyntax {
     element.attributes['src'] = htmlAttrEscape.convert(mxc);
     element.attributes['alt'] = htmlAttrEscape.convert(':$emote:');
     element.attributes['title'] = htmlAttrEscape.convert(':$emote:');
-    element.attributes['height'] = '32';
+    element.attributes['height'] = '24';
     element.attributes['vertical-align'] = 'middle';
     parser.addNode(element);
     return true;
