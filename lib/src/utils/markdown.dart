@@ -5,6 +5,7 @@
 import 'dart:convert';
 
 import 'package:markdown/markdown.dart';
+import 'package:matrix/src/utils/markdown/fixed_autolink_extension_syntax.dart';
 
 const htmlAttrEscape = HtmlEscape(HtmlEscapeMode.attribute);
 
@@ -103,13 +104,14 @@ class InlineLatexSyntax extends InlineSyntax {
   bool onMatch(InlineParser parser, Match match) {
     if (match.start > 0) {
       final precedingText = match.input.substring(0, match.start);
-      final urlMatch = RegExp(r'(?:https?://)[^\s]*$').firstMatch(precedingText);
+      final urlMatch =
+          RegExp(r'(?:https?://)[^\s]*$').firstMatch(precedingText);
       if (urlMatch != null) {
         parser.addNode(Text(match[0]!));
         return true;
       }
     }
-    
+
     final element =
         Element('span', [Element.text('code', htmlEscape.convert(match[1]!))]);
     element.attributes['data-mx-maths'] = htmlAttrEscape.convert(match[1]!);
@@ -210,18 +212,19 @@ String markdown(
   bool enableLatex = true,
 }) {
   var ret = markdownToHtml(
-    text
-        .replaceAllMapped(
-          // Replace HTML tags
-          RegExp(r'<([^>]*)>'),
-          (match) => '&lt;${match.group(1)}&gt;',
-        )
-        .replaceNewlines(),
-    extensionSet: ExtensionSet.gitHubFlavored,
+    text.replaceNewlines(),
+    // extensionSet: ExtensionSet.gitHubFlavored,
     blockSyntaxes: [
+      const FencedCodeBlockSyntax(),
+      const TableSyntax(),
+      const UnorderedListWithCheckboxSyntax(),
+      const OrderedListWithCheckboxSyntax(),
+      const FootnoteDefSyntax(),
       if (enableLatex) BlockLatexSyntax(),
     ],
     inlineSyntaxes: [
+      StrikethroughSyntax(),
+      AutolinkExtensionSyntaxFix(),
       StrikethroughSyntax(),
       SpoilerSyntax(),
       EmoteSyntax(getEmotePacks),
