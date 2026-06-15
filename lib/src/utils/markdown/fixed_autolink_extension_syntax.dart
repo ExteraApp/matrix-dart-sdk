@@ -108,7 +108,7 @@ class AutolinkExtensionSyntaxFix extends InlineSyntax {
     }
 
     final anchor = Element.text('a', text)
-      ..attributes['href'] = Uri.encodeFull(destination);
+      ..attributes['href'] = destination;
 
     parser
       ..addNode(anchor)
