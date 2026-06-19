@@ -188,7 +188,7 @@ class MatrixDefaultLocalizations extends MatrixLocalizations {
   String get unknownEncryptionAlgorithm => 'Unknown encryption algorithm';
 
   @override
-  String unknownEvent(String typeKey) => 'Unknown event $typeKey';
+  String unknownEvent(String senderName, String typeKey) => 'Unknown event $typeKey';
 
   @override
   String userLeftTheChat(String targetName) => '$targetName left the chat';

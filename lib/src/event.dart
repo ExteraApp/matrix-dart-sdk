@@ -1057,7 +1057,8 @@ class Event extends MatrixEvent {
     );
 
     final callback = EventLocalizations.localizationsMap[type];
-    var localizedBody = i18n.unknownEvent(type);
+    var localizedBody = i18n.unknownEvent(
+        senderFromMemoryOrFallback.calcDisplayname(i18n: i18n), type);
     if (callback != null) {
       localizedBody = callback(this, i18n, body);
     }

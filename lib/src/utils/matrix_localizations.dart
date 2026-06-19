@@ -148,7 +148,7 @@ abstract class MatrixLocalizations {
 
   String couldNotDecryptMessage(String errorText);
 
-  String unknownEvent(String typeKey);
+  String unknownEvent(String senderName, String typeKey);
 
   String startedACall(String senderName);
 

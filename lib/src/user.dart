@@ -110,7 +110,7 @@ class User extends StrippedStateEvent {
     final stateKey = this.stateKey;
     if (stateKey != null && mxidLocalPartFallback) {
       if (!formatLocalpart) {
-        return stateKey.localpart ?? '';
+        return stateKey.localpart ?? id;
       }
       final words = stateKey.localpart?.replaceAll('_', ' ').split(' ') ?? [];
       for (var i = 0; i < words.length; i++) {
@@ -118,7 +118,8 @@ class User extends StrippedStateEvent {
           words[i] = words[i][0].toUpperCase() + words[i].substring(1);
         }
       }
-      return words.join(' ').trim();
+      final formattedLocalpart = words.join(' ').trim();
+      return formattedLocalpart.isNotEmpty ? formattedLocalpart : id;
     }
     return id;
   }
