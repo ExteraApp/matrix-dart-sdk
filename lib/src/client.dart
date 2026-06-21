@@ -3731,6 +3731,12 @@ class Client extends MatrixApi {
                 if (oldKey != null) {
                   // be sure to save the verification status
                   entry.setDirectVerified(oldKey.directVerified);
+                  if (oldKey.trustOnFirstUseSince != null) {
+                    entry.trustOnFirstUse(
+                      since: oldKey.trustOnFirstUseSince,
+                      updateInDatabase: false,
+                    );
+                  }
                   entry.blocked = oldKey.blocked;
                   entry.validSignatures = oldKey.validSignatures;
                 }
@@ -3797,6 +3803,7 @@ class Client extends MatrixApi {
                   json.encode(entry.toJson()),
                   entry.directVerified,
                   entry.blocked,
+                  trustOnFirstUseSince: entry.trustOnFirstUseSince,
                 ),
               );
             }
@@ -4242,7 +4249,7 @@ class Client extends MatrixApi {
     /// Whether to also decline all invites and leave DM rooms with this user.
     bool leaveRooms = true,
   }) async {
-    if (!userId.isValidMatrixId) {
+    if (!userId.isValidMatrixIdStrict()) {
       throw Exception('$userId is not a valid mxid!');
     }
 
@@ -4273,7 +4280,7 @@ class Client extends MatrixApi {
   /// Unignore a user. This will clear the local cached messages and request
   /// them again from the server to avoid gaps in the timeline.
   Future<void> unignoreUser(String userId) async {
-    if (!userId.isValidMatrixId) {
+    if (!userId.isValidMatrixIdStrict()) {
       throw Exception('$userId is not a valid mxid!');
     }
     if (!ignoredUsers.contains(userId)) {
@@ -4443,6 +4450,7 @@ class Client extends MatrixApi {
             jsonEncode(crossSigningKey.toJson()),
             crossSigningKey.directVerified,
             crossSigningKey.blocked,
+            trustOnFirstUseSince: crossSigningKey.trustOnFirstUseSince,
           );
         }
       }

@@ -131,7 +131,7 @@ extension CommandsClientExtension on Client {
     addCommand('dm', (args, stdout) async {
       final parts = args.msg.split(' ');
       final mxid = parts.first;
-      if (!mxid.isValidMatrixId) {
+      if (!mxid.isValidMatrixIdStrict()) {
         throw CommandException('You must enter a valid mxid when using /dm');
       }
 
@@ -229,7 +229,7 @@ extension CommandsClientExtension on Client {
         throw RoomCommandException();
       }
       final parts = args.msg.split(' ');
-      if (parts.isEmpty || !parts.first.isValidMatrixId) {
+      if (parts.isEmpty || !parts.first.isValidMatrixIdStrict()) {
         throw CommandException('You must enter a valid mxid when using /op');
       }
       int? pl;
@@ -251,7 +251,7 @@ extension CommandsClientExtension on Client {
       }
       final parts = args.msg.split(' ');
       final mxid = parts.first;
-      if (!mxid.isValidMatrixId) {
+      if (!mxid.isValidMatrixIdStrict()) {
         throw CommandException('You must enter a valid mxid when using /kick');
       }
       await room.kick(mxid);
@@ -265,7 +265,7 @@ extension CommandsClientExtension on Client {
       }
       final parts = args.msg.split(' ');
       final mxid = parts.first;
-      if (!mxid.isValidMatrixId) {
+      if (!mxid.isValidMatrixIdStrict()) {
         throw CommandException('You must enter a valid mxid when using /ban');
       }
       await room.ban(mxid);
@@ -279,7 +279,7 @@ extension CommandsClientExtension on Client {
       }
       final parts = args.msg.split(' ');
       final mxid = parts.first;
-      if (!mxid.isValidMatrixId) {
+      if (!mxid.isValidMatrixIdStrict()) {
         throw CommandException('You must enter a valid mxid when using /unban');
       }
       await room.unban(mxid);
@@ -294,7 +294,7 @@ extension CommandsClientExtension on Client {
 
       final parts = args.msg.split(' ');
       final mxid = parts.first;
-      if (!mxid.isValidMatrixId) {
+      if (!mxid.isValidMatrixIdStrict()) {
         throw CommandException(
           'You must enter a valid mxid when using /invite',
         );
@@ -363,7 +363,7 @@ extension CommandsClientExtension on Client {
       }
 
       final mxid = args.msg.split(' ').first;
-      if (!mxid.isValidMatrixId) {
+      if (!mxid.isValidMatrixIdStrict()) {
         throw CommandException(
           'You must enter a valid mxid when using /maskasdm',
         );
