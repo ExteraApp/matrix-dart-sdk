@@ -196,38 +196,39 @@ class User extends StrippedStateEvent {
   /// Get the mention text to use in a plain text body to mention this specific user
   /// in this specific room
   String get mention {
-    // if the displayname has [ or ] or : we can't build our more fancy stuff, so fall back to the id
-    // [] is used for the delimitors
-    // If we allowed : we could get collissions with the mxid fallbacks
-    final displayName = this.displayName;
-    if (displayName == null ||
-        displayName.isEmpty ||
-        {'[', ']', ':'}.any(displayName.contains)) {
-      return id;
-    }
+    return id;
+    // // if the displayname has [ or ] or : we can't build our more fancy stuff, so fall back to the id
+    // // [] is used for the delimitors
+    // // If we allowed : we could get collissions with the mxid fallbacks
+    // final displayName = this.displayName;
+    // if (displayName == null ||
+    //     displayName.isEmpty ||
+    //     {'[', ']', ':'}.any(displayName.contains)) {
+    //   return id;
+    // }
 
-    final identifier =
-        '@${RegExp(r'^\w+$').hasMatch(displayName) ? displayName : '[$displayName]'}';
+    // final identifier =
+    //     '@${RegExp(r'^\w+$').hasMatch(displayName) ? displayName : '[$displayName]'}';
 
-    // get all the users with the same display name
-    final allUsersWithSameDisplayname = room.getParticipants();
-    allUsersWithSameDisplayname.removeWhere(
-      (user) =>
-          user.id == id ||
-          (user.displayName?.isEmpty ?? true) ||
-          user.displayName != displayName,
-    );
-    if (allUsersWithSameDisplayname.isEmpty) {
-      return identifier;
-    }
-    // ok, we have multiple users with the same display name....time to calculate a hash
-    final hashes = allUsersWithSameDisplayname.map((u) => _hash(u.id));
-    final ourHash = _hash(id);
-    // hash collission...just return our own mxid again
-    if (hashes.contains(ourHash)) {
-      return id;
-    }
-    return '$identifier#$ourHash';
+    // // get all the users with the same display name
+    // final allUsersWithSameDisplayname = room.getParticipants();
+    // allUsersWithSameDisplayname.removeWhere(
+    //   (user) =>
+    //       user.id == id ||
+    //       (user.displayName?.isEmpty ?? true) ||
+    //       user.displayName != displayName,
+    // );
+    // if (allUsersWithSameDisplayname.isEmpty) {
+    //   return identifier;
+    // }
+    // // ok, we have multiple users with the same display name....time to calculate a hash
+    // final hashes = allUsersWithSameDisplayname.map((u) => _hash(u.id));
+    // final ourHash = _hash(id);
+    // // hash collission...just return our own mxid again
+    // if (hashes.contains(ourHash)) {
+    //   return id;
+    // }
+    // return '$identifier#$ourHash';
   }
 
   /// Get the mention fragments for this user.
