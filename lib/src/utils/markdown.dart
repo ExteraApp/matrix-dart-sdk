@@ -6,6 +6,7 @@ import 'dart:convert';
 
 import 'package:markdown/markdown.dart';
 import 'package:matrix/src/utils/markdown/fixed_autolink_extension_syntax.dart';
+import 'package:matrix/src/utils/matrix_id_string_extension.dart';
 
 const htmlAttrEscape = HtmlEscape(HtmlEscapeMode.attribute);
 
@@ -175,7 +176,10 @@ class PillSyntax extends InlineSyntax {
       return true;
     }
     final identifier = match[1]!;
-    final element = Element.text('a', htmlEscape.convert(identifier));
+    final element = Element.text(
+      'a',
+      htmlEscape.convert(identifier.localpart?.substring(1) ?? identifier),
+    );
     element.attributes['href'] =
         htmlAttrEscape.convert('https://matrix.to/#/$identifier');
     parser.addNode(element);
