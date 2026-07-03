@@ -178,7 +178,9 @@ class PillSyntax extends InlineSyntax {
     final identifier = match[1]!;
     final element = Element.text(
       'a',
-      htmlEscape.convert(identifier.localpart ?? identifier),
+      htmlEscape.convert(identifier.sigil == '@'
+          ? identifier.localpart ?? identifier
+          : identifier),
     );
     element.attributes['href'] =
         htmlAttrEscape.convert('https://matrix.to/#/$identifier');

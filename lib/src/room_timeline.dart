@@ -454,7 +454,7 @@ class RoomTimeline extends Timeline {
     cancelSendEventSub?.cancel();
   }
 
-  void _sessionKeyReceived(String sessionId) async {
+  Future<void> _sessionKeyReceived(String sessionId) async {
     var decryptAtLeastOneEvent = false;
     Future<void> decryptFn() async {
       final encryption = room.client.encryption;
