@@ -4,6 +4,35 @@ SPDX-FileCopyrightText: 2019-Present Famedly GmbH
 SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
+## [8.1.0] 13th July 2026
+- fix: avoid concurrent modification when updating group calls (Marco Attanasio)
+- fix: clear LiveKit key debounce timestamp on dispose (Marco Attanasio)
+- fix: get user device keys for gappy syncs and partial rooms (td)
+
+## [8.0.0] 9th July 2026
+- chore: better error handling for soft logout (Christian Kußowski)
+- docs: correct Dart SDK version in cloud setup notes (Cursor Agent)
+- fix: do not assume room member count is 1 if absent (Christian Kußowski)
+- fix: ensure not soft logged out in pushhelper (Christian Kußowski)
+- fix: (BREAKING) Soft logout with Matrix native OIDC does not send soft_logout flag (Christian Kußowski)
+- fix: use thumbnail only if present (Christian Kußowski)
+- refactor: No longer set timeline event as state event (Christian Kußowski)
+
+## [7.5.0] 2nd July 2026
+- build: (BREAKING) update to matrix spec 1.18 (Christian Kußowski)
+- build: (deps): bump actions/checkout from 6 to 7 (dependabot[bot])
+- build: update dart to 3.11 and enable null aware elements in lists (Christian Kußowski)
+- build: update to matrix spec 1.17 (Christian Kußowski)
+- ci: enable sort_pub_dependencies lint (Cursor Agent)
+- fix: database operation not in transaction (Christian Kußowski)
+- fix: load keys for decryption separately for [Room].searchEvents (Karthikeyan S)
+- fix: selfSign() with passphrase fails sometimes when using existing ssss instead of just the passphrase (Christian Kußowski)
+- fix: type error in model (Christian Kußowski)
+- refactor: use new formatting for code generated files (Christian Kußowski)
+
+## [7.4.0] 23rd June 2026
+- feat: add skipScanner flag to download methods for per-call content scanner bypass (Khalil Amor)
+
 ## [7.3.0] 18th June 2026
 - feat: add isValidMatrixIdStrict for spec-compliant matrix id validation (Cursor Agent)
 - fix: return null when thumbnail was not found and make cast nullable (yurtemre7)

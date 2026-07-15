@@ -68,11 +68,7 @@ class VoIP {
       StreamController();
 
   CallParticipant? get localParticipant => client.isLogged()
-      ? CallParticipant(
-          this,
-          userId: client.userID!,
-          deviceId: client.deviceID,
-        )
+      ? CallParticipant(this, userId: client.userID!, deviceId: client.deviceID)
       : null;
 
   /// map of roomIds to the invites they are currently processing or in a call with
@@ -121,26 +117,25 @@ class VoIP {
     });
 
     // handles the com.famedly.call events.
-    client.onRoomState.stream.listen(
-      (update) async {
-        final event = update.state;
-        if (event is! Event) return;
-        if (event.room.membership != Membership.join) return;
-        if (event.type != EventTypes.GroupCallMember) return;
+    client.onRoomState.stream.listen((update) async {
+      final event = update.state;
+      if (event is! Event) return;
+      if (event.room.membership != Membership.join) return;
+      if (event.type != EventTypes.GroupCallMember) return;
 
-        final mems = event.room.getCallMembershipsFromEvent(event, this);
-        for (final mem in mems) {
-          unawaited(createGroupCallFromRoomStateEvent(mem));
+      final mems = event.room.getCallMembershipsFromEvent(event, this);
+      for (final mem in mems) {
+        unawaited(createGroupCallFromRoomStateEvent(mem));
+      }
+      final groupCallsEntries = List.of(groupCalls.entries);
+      for (final map in groupCallsEntries) {
+        if (map.key.roomId == event.room.id) {
+          // because we don't know which call got updated, just update all
+          // group calls we have entered for that room
+          await map.value.onMemberStateChanged();
         }
-        for (final map in groupCalls.entries) {
-          if (map.key.roomId == event.room.id) {
-            // because we don't know which call got updated, just update all
-            // group calls we have entered for that room
-            await map.value.onMemberStateChanged();
-          }
-        }
-      },
-    );
+      }
+    });
 
     delegate.mediaDevices.ondevicechange = _onDeviceChange;
   }
@@ -169,7 +164,8 @@ class VoIP {
       // checks for ended events and removes invites for that call id.
       if (callEvent is Event) {
         // removes expired invites
-        final age = callEvent.unsigned?.tryGet<int>('age') ??
+        final age =
+            callEvent.unsigned?.tryGet<int>('age') ??
             (DateTime.now().millisecondsSinceEpoch -
                 callEvent.originServerTs.millisecondsSinceEpoch);
 
@@ -304,8 +300,10 @@ class VoIP {
       if (callId != null) {
         final call = calls[VoipId(roomId: room.id, callId: callId)];
         if (call == null &&
-            !{EventTypes.CallInvite, EventTypes.GroupCallMemberInvite}
-                .contains(event.type)) {
+            !{
+              EventTypes.CallInvite,
+              EventTypes.GroupCallMemberInvite,
+            }.contains(event.type)) {
           Logs().w(
             'Ignoring call event ${event.type} for room ${room.id} because we do not have the call',
           );
@@ -470,10 +468,13 @@ class VoIP {
     var callType = CallType.kVoice;
     SDPStreamMetadata? sdpStreamMetadata;
     if (content[sdpStreamMetadataKey] != null) {
-      sdpStreamMetadata =
-          SDPStreamMetadata.fromJson(content[sdpStreamMetadataKey]);
-      sdpStreamMetadata.sdpStreamMetadatas
-          .forEach((streamId, SDPStreamPurpose purpose) {
+      sdpStreamMetadata = SDPStreamMetadata.fromJson(
+        content[sdpStreamMetadataKey],
+      );
+      sdpStreamMetadata.sdpStreamMetadatas.forEach((
+        streamId,
+        SDPStreamPurpose purpose,
+      ) {
         Logs().v(
           '[VOIP] [$streamId] => purpose: ${purpose.purpose}, audioMuted: ${purpose.audio_muted}, videoMuted:  ${purpose.video_muted}',
         );
@@ -765,10 +766,7 @@ class VoIP {
     }
   }
 
-  Future<void> _handleReactionEvent(
-    Room room,
-    MatrixEvent event,
-  ) async {
+  Future<void> _handleReactionEvent(Room room, MatrixEvent event) async {
     final content = event.content;
 
     final callId = content.tryGet<String>('call_id');
@@ -809,8 +807,11 @@ class VoIP {
       return;
     }
 
-    final memberships =
-        room.getCallMembershipsForUser(event.senderId, deviceId, this);
+    final memberships = room.getCallMembershipsForUser(
+      event.senderId,
+      deviceId,
+      this,
+    );
     final membership = memberships.firstWhereOrNull(
       (m) =>
           m.callId == callId &&
@@ -848,9 +849,7 @@ class VoIP {
 
     groupCall.matrixRTCEventStream.add(reaction);
 
-    Logs().d(
-      '[VOIP] _handleReactionEvent: Sent reaction event: $reaction',
-    );
+    Logs().d('[VOIP] _handleReactionEvent: Sent reaction event: $reaction');
   }
 
   Future<void> _handleRedactionEvent(
@@ -950,8 +949,10 @@ class VoIP {
       {
         'username': _turnServerCredentials!.username,
         'credential': _turnServerCredentials!.password,
-        'urls': _turnServerCredentials!.uris,
-      }
+        'urls': _turnServerCredentials!.uris
+            .map((uri) => uri.toString())
+            .toList(),
+      },
     ];
   }
 
@@ -1069,16 +1070,14 @@ class VoIP {
     }
 
     if (!room.canJoinGroupCall) {
-      throw MatrixSDKVoipException(
-        '''
+      throw MatrixSDKVoipException('''
         User ${client.userID}:${client.deviceID} is not allowed to join famedly calls in room ${room.id},
         canJoinGroupCall: ${room.canJoinGroupCall},
         groupCallsEnabledForEveryone: ${room.groupCallsEnabledForEveryone},
         needed: ${room.powerForChangingStateEvent(EventTypes.GroupCallMember)},
         own: ${room.ownPowerLevel}}
         plMap: ${room.getState(EventTypes.RoomPowerLevels)?.content}
-        ''',
-      );
+        ''');
     }
 
     var groupCall = getGroupCallById(room.id, groupCallId);
@@ -1104,9 +1103,10 @@ class VoIP {
 
   void setGroupCallById(GroupCallSession groupCallSession) {
     groupCalls[VoipId(
-      roomId: groupCallSession.room.id,
-      callId: groupCallSession.groupCallId,
-    )] = groupCallSession;
+          roomId: groupCallSession.room.id,
+          callId: groupCallSession.groupCallId,
+        )] =
+        groupCallSession;
   }
 
   /// Create a new group call from a room state event.

@@ -12,11 +12,11 @@ const htmlAttrEscape = HtmlEscape(HtmlEscapeMode.attribute);
 
 class SpoilerSyntax extends DelimiterSyntax {
   SpoilerSyntax()
-      : super(
-          r'\|\|',
-          requiresDelimiterRun: true,
-          tags: [DelimiterTag('span', 2)],
-        );
+    : super(
+        r'\|\|',
+        requiresDelimiterRun: true,
+        tags: [DelimiterTag('span', 2)],
+      );
 
   @override
   Iterable<Node>? close(
@@ -51,10 +51,13 @@ class SpoilerSyntax extends DelimiterSyntax {
       }
     }
     // if we were still searching for a reason that means there was none - use the original children!
-    final element =
-        Element('span', searchingForReason ? children : newChildren);
-    element.attributes['data-mx-spoiler'] =
-        searchingForReason ? '' : htmlAttrEscape.convert(reason);
+    final element = Element(
+      'span',
+      searchingForReason ? children : newChildren,
+    );
+    element.attributes['data-mx-spoiler'] = searchingForReason
+        ? ''
+        : htmlAttrEscape.convert(reason);
     return <Node>[element];
   }
 }
@@ -149,9 +152,9 @@ class BlockLatexSyntax extends BlockSyntax {
 
   @override
   Node parse(BlockParser parser) {
-    final childLines = parseChildLines(parser)
-        .map((line) => line?.content)
-        .whereType<String>();
+    final childLines = parseChildLines(
+      parser,
+    ).map((line) => line?.content).whereType<String>();
     // we use .substring(2) as childLines will *always* contain the first two '$$'
     final latex = childLines.join('\n').trim().substring(2).trim();
     final element = Element('div', [
@@ -164,9 +167,9 @@ class BlockLatexSyntax extends BlockSyntax {
 
 class PillSyntax extends InlineSyntax {
   PillSyntax()
-      : super(
-          r'([@#!][^\s:]*:(?:[^\s]+\.\w+|[\d\.]+|\[[a-fA-F0-9:]+\])(?::\d+)?)',
-        );
+    : super(
+        r'([@#!][^\s:]*:(?:[^\s]+\.\w+|[\d\.]+|\[[a-fA-F0-9:]+\])(?::\d+)?)',
+      );
 
   @override
   bool onMatch(InlineParser parser, Match match) {
@@ -205,8 +208,9 @@ class MentionSyntax extends InlineSyntax {
       return true;
     }
     final element = Element.text('a', htmlEscape.convert(match[1]!));
-    element.attributes['href'] =
-        htmlAttrEscape.convert('https://matrix.to/#/$mention');
+    element.attributes['href'] = htmlAttrEscape.convert(
+      'https://matrix.to/#/$mention',
+    );
     parser.addNode(element);
     return true;
   }

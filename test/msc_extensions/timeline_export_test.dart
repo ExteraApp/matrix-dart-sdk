@@ -86,10 +86,7 @@ Event createTestEvent({
   return Event(
     eventId: eventId,
     type: type,
-    content: {
-      'msgtype': msgtype,
-      'body': 'Test message $eventId',
-    },
+    content: {'msgtype': msgtype, 'body': 'Test message $eventId'},
     senderId: '@user:example.com',
     originServerTs: timestamp,
     room: room,
@@ -119,13 +116,16 @@ void main() {
     late DateTime now;
     late MockClient client;
     late Room room;
-    late Timeline timeline;
+    late RoomTimeline timeline;
 
     setUp(() {
       now = DateTime.now();
       client = MockClient('testclient');
       room = Room(id: '!testroom:example.com', client: client);
-      timeline = Timeline(room: room, chunk: TimelineChunk(events: []));
+      timeline = RoomTimeline(
+        room: room,
+        chunk: TimelineChunk(events: []),
+      );
     });
 
     group('basic export functionality', () {
@@ -161,10 +161,12 @@ void main() {
         // Verify events are in chronological order
         for (var i = 1; i < complete.events.length; i++) {
           expect(
-            complete.events[i].originServerTs
-                    .isBefore(complete.events[i - 1].originServerTs) ||
-                complete.events[i].originServerTs
-                    .isAtSameMomentAs(complete.events[i - 1].originServerTs),
+            complete.events[i].originServerTs.isBefore(
+                  complete.events[i - 1].originServerTs,
+                ) ||
+                complete.events[i].originServerTs.isAtSameMomentAs(
+                  complete.events[i - 1].originServerTs,
+                ),
             isTrue,
             reason: 'Events should be in reverse chronological order',
           );
@@ -203,7 +205,7 @@ void main() {
 
         client = MockClient('testclient', serverEvents: manyServerEvents);
         room = Room(id: '!testroom:example.com', client: client);
-        timeline = Timeline(
+        timeline = RoomTimeline(
           room: room,
           chunk: TimelineChunk(events: manyServerEvents.take(10).toList()),
         );
@@ -237,11 +239,14 @@ void main() {
       test('continues export when server returns error', () async {
         client = MockClient('testclient', throwError: true);
         room = Room(id: '!testroom:example.com', client: client);
-        final initialEvents =
-            createMockEvents(count: 5, startTime: now, room: room);
+        final initialEvents = createMockEvents(
+          count: 5,
+          startTime: now,
+          room: room,
+        );
         client.dbEvents = initialEvents;
         client.serverEvents = initialEvents;
-        timeline = Timeline(
+        timeline = RoomTimeline(
           room: room,
           chunk: TimelineChunk(events: initialEvents),
         );
@@ -315,7 +320,10 @@ void main() {
 
         client = MockClient('testclient', serverEvents: mixedEvents);
         room = Room(id: '!testroom:example.com', client: client);
-        timeline = Timeline(room: room, chunk: TimelineChunk(events: []));
+        timeline = RoomTimeline(
+          room: room,
+          chunk: TimelineChunk(events: []),
+        );
         room.prev_batch = '0';
 
         final results = <ExportResult>[];
